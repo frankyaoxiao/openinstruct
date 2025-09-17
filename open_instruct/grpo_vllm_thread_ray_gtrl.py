@@ -98,6 +98,7 @@ from open_instruct.dataset_transformation import (
 )
 from open_instruct.ground_truth_utils import build_all_verifiers, soft_format_reward_func
 from open_instruct.model_utils import (
+    Batch,
     ModelConfig,
     apply_verifiable_reward,
     disable_dropout_in_model,
@@ -1172,6 +1173,13 @@ class PolicyTrainerRayProcess(RayProcess):
                         ground_truth = ground_truths[i : i + args.local_rollout_forward_batch_size]
                         dataset = datasets[i : i + args.local_rollout_forward_batch_size]
                         decoded_response = tokenizer.batch_decode(postprocessed_response)
+                        reward_batch = Batch(
+                            queries=[],
+                            ground_truths=ground_truth,
+                            datasets=dataset,
+                            raw_queries=None,
+                            indices=None,
+                        )
                         verifiable_reward, per_func_reward = asyncio.run(
                             apply_verifiable_reward(
                                 reward_fn_mapping=reward_fn_mapping,
@@ -1179,8 +1187,7 @@ class PolicyTrainerRayProcess(RayProcess):
                                     seq[seq != tokenizer.pad_token_id].tolist() for seq in postprocessed_response
                                 ],
                                 decoded_responses=decoded_response,
-                                ground_truths=ground_truth,
-                                datasets=dataset,
+                                batch=reward_batch,
                                 reward_mult=args.verification_reward,
                             )
                         )

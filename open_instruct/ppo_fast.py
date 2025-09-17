@@ -99,6 +99,7 @@ from open_instruct.ground_truth_utils import (
     soft_format_reward_func,
 )
 from open_instruct.model_utils import (
+    Batch,
     ModelConfig,
     apply_verifiable_reward,
     disable_dropout_in_model,
@@ -2016,12 +2017,18 @@ if __name__ == "__main__":
 
         if args.apply_verifiable_reward:
             with Timer("[Data Preparation Thread] Calculating rewards -- 🏆 Applying verifiable reward"):
+                reward_batch = Batch(
+                    queries=[],
+                    ground_truths=ground_truths,
+                    datasets=datasets,
+                    raw_queries=None,
+                    indices=None,
+                )
                 verifiable_rewards, per_func_rewards = await apply_verifiable_reward(
                     reward_fn_mapping,
                     responses,
                     decoded_responses,
-                    ground_truths,
-                    datasets,
+                    reward_batch,
                     reward_mult=args.verification_reward,
                     queries=queries,
                 )
