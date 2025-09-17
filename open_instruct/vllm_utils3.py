@@ -543,13 +543,32 @@ class LLMRayActor:
         prompt_token_ids: List[List[int]],
         use_tqdm: bool = False,
     ) -> List[vllm.RequestOutput]:
-        """Thin wrapper around LLMEngine.generate for Ray RPC usage."""
+        """Synchronous generation helper compatible with Ray RPC."""
 
-        return self.llm_engine.generate(
-            sampling_params=sampling_params,
-            prompt_token_ids=prompt_token_ids,
-            use_tqdm=use_tqdm,
-        )
+        request_ids = []
+        timestamp = time.time()
+        for idx, prompt in enumerate(prompt_token_ids):
+            request_id = f"ray_generate_{timestamp}_{idx}"
+            request_ids.append(request_id)
+            prompt_obj = vllm.TokensPrompt(prompt_token_ids=prompt)
+            params = sampling_params.clone()
+            self.llm_engine.add_request(request_id, prompt_obj, params)
+
+        finished: Dict[str, vllm.RequestOutput] = {}
+        while self.llm_engine.has_unfinished_requests():
+            step_outputs = self.llm_engine.step()
+            for output in step_outputs:
+                if output.finished:
+                    finished[output.request_id] = output
+
+        # There might be remaining cached outputs even if there are no
+        # unfinished requests; run a final step to flush them.
+        step_outputs = self.llm_engine.step()
+        for output in step_outputs:
+            if output.finished:
+                finished[output.request_id] = output
+
+        return [finished[request_id] for request_id in request_ids]
 
     def _poll_tool_futures(self, tracking, tokenizer):
         """Poll and handle completed tool executions."""
