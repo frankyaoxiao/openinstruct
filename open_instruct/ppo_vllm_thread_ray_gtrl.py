@@ -142,6 +142,8 @@ class Args:
         default_factory=lambda: ["rlvr_constraint_filter_v1", "rlvr_tokenize_v1", "rlvr_filter_v1"]
     )
     """The list of transform functions to apply to the dataset."""
+    max_length_verifier_max_length: int = 4096
+    """Maximum length expected by MaxLengthVerifier"""
     dataset_cache_mode: Literal["hf", "local"] = "local"
     """The mode to use for caching the dataset."""
     dataset_local_cache_dir: str = "local_dataset_cache"

@@ -38,6 +38,5 @@ python open_instruct/ppo_vllm_thread_ray_gtrl.py \
     --no_try_launch_beaker_eval_jobs \
     --vllm_enforce_eager \
     --gather_whole_model false \
-    --max_length_verifier_max_length 4096 \
 
 
