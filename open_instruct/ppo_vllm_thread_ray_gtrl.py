@@ -1783,7 +1783,7 @@ def main(args: Args, tc: TokenizerConfig, model_config: ModelConfig):
 
     # create the model and optimizer
     pg = None
-    bundles = [{"GPU": actor_num_gpus, "CPU": actor_num_gpus * 10} for actor_num_gpus in args.actor_num_gpus_per_node]
+    bundles = [{"GPU": actor_num_gpus, "CPU": actor_num_gpus * 6} for actor_num_gpus in args.actor_num_gpus_per_node]
     pg = placement_group(bundles, strategy="STRICT_SPREAD")
     ray.get(pg.ready())
 
