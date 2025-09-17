@@ -537,6 +537,20 @@ class LLMRayActor:
 
         return len(request_outputs)
 
+    def generate(
+        self,
+        sampling_params: vllm.SamplingParams,
+        prompt_token_ids: List[List[int]],
+        use_tqdm: bool = False,
+    ) -> List[vllm.RequestOutput]:
+        """Thin wrapper around LLMEngine.generate for Ray RPC usage."""
+
+        return self.llm_engine.generate(
+            sampling_params=sampling_params,
+            prompt_token_ids=prompt_token_ids,
+            use_tqdm=use_tqdm,
+        )
+
     def _poll_tool_futures(self, tracking, tokenizer):
         """Poll and handle completed tool executions."""
         if not self.tools or not tracking["pending_tool_futures"]:
