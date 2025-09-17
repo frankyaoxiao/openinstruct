@@ -119,8 +119,8 @@ from open_instruct.utils import (
     maybe_update_beaker_description,
     maybe_use_ai2_hf_entity,
     maybe_use_ai2_wandb_entity,
-    setup_logger,
 )
+from open_instruct import logger_utils
 from open_instruct.vllm_utils3 import create_vllm_engines, init_process_group
 
 api = HfApi()
@@ -609,7 +609,7 @@ class ShufflingIterator:
 
 class RayProcess:
     def __init__(self, world_size, rank, local_rank, master_addr, master_port):
-        setup_logger()
+        logger_utils.setup_logger(__name__)
         self.world_size = world_size
         self.rank = rank
         self.local_rank = local_rank
