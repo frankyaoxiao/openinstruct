@@ -286,6 +286,8 @@ class IFEvalVerifier(VerifierFunction):
 
     def __init__(self, verifier_config: Optional[VerifierConfig] = None) -> None:
         super().__init__("ifeval", weight=1.0)
+        self._verifier_config = verifier_config
+        self._legacy_verifier: Optional["IFEvalVerifierOld"] = None
 
     def __call__(
         self, tokenized_prediction: List[int], prediction: str, label: Union[str, Dict], query: Optional[str] = None
@@ -324,6 +326,10 @@ class IFEvalVerifier(VerifierFunction):
                     return VerificationResult(score=0.0)
         answer = remove_thinking_section(prediction)
         if "instruction_id" not in constraint_dict or "kwargs" not in constraint_dict:
+            if "func_name" in constraint_dict:
+                if self._legacy_verifier is None:
+                    self._legacy_verifier = IFEvalVerifierOld(verifier_config=self._verifier_config)
+                return self._legacy_verifier(tokenized_prediction, prediction, constraint_dict, query)
             logger.warning("Constraint missing required keys: %s", constraint_dict)
             return VerificationResult(score=0.0)
 
