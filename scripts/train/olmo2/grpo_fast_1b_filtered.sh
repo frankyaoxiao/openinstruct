@@ -1,8 +1,8 @@
 python open_instruct/grpo_fast.py \
     --exp_name olmo2_1b_grpo_fast_filtered \
     --beta 0.0 \
-    --num_unique_prompts_rollout 16 \
-    --num_samples_per_prompt_rollout 4 \
+    --num_unique_prompts_rollout 8 \
+    --num_samples_per_prompt_rollout 2 \
     --kl_estimator kl3 \
     --learning_rate 5e-7 \
     --dataset_mixer_list allenai/RLVR-GSM-MATH-IF-Mixed-Constraints 1.0 \
@@ -31,9 +31,9 @@ python open_instruct/grpo_fast.py \
     --num_epochs 1 \
     --vllm_tensor_parallel_size 1 \
     --vllm_num_engines 1 \
-    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_gpu_memory_utilization 0.4 \
     --single_gpu_mode \
-    --inference_batch_size 4 \
+    --inference_batch_size 2 \
     --vllm_sync_backend gloo \
     --lr_scheduler_type linear \
     --seed 1 \
@@ -43,3 +43,4 @@ python open_instruct/grpo_fast.py \
     --output_dir output/olmo2_1b_grpo_fast_filtered \
     --rlvr_excluded_constraint_types "Number Paragraphs" "Number Words" "Number Sentences" "Number Paragraphs + First Word in i-th Paragraph" \
     --gradient_checkpointing
+
