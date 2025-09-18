@@ -34,6 +34,7 @@ python open_instruct/grpo_fast.py \
     --vllm_gpu_memory_utilization 0.5 \
     --single_gpu_mode \
     --inference_batch_size 1 \
+    --vllm_sync_backend gloo \
     --lr_scheduler_type linear \
     --seed 1 \
     --local_eval_every 25 \
