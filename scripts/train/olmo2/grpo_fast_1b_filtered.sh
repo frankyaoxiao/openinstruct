@@ -1,8 +1,8 @@
 python open_instruct/grpo_fast.py \
     --exp_name olmo2_1b_grpo_fast_filtered \
     --beta 0.0 \
-    --num_unique_prompts_rollout 8 \
-    --num_samples_per_prompt_rollout 2 \
+    --num_unique_prompts_rollout 16 \
+    --num_samples_per_prompt_rollout 4 \
     --kl_estimator kl3 \
     --learning_rate 5e-7 \
     --dataset_mixer_list allenai/RLVR-GSM-MATH-IF-Mixed-Constraints 1.0 \
@@ -33,7 +33,7 @@ python open_instruct/grpo_fast.py \
     --vllm_num_engines 1 \
     --vllm_gpu_memory_utilization 0.5 \
     --single_gpu_mode \
-    --inference_batch_size 1 \
+    --inference_batch_size 4 \
     --vllm_sync_backend gloo \
     --lr_scheduler_type linear \
     --seed 1 \
