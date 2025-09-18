@@ -1238,6 +1238,7 @@ def rlvr_filter_v1(
     need_contain_labels: bool = True,
     max_prompt_token_length: Optional[int] = None,
     max_token_length: Optional[int] = None,
+    excluded_constraint_types: Optional[List[str]] = None,
 ):
     max_prompt_token_length_ok = True
     if max_prompt_token_length is not None:
@@ -1248,7 +1249,17 @@ def rlvr_filter_v1(
         max_token_length_ok = len(row[INPUT_IDS_KEY]) <= max_token_length
 
     contain_some_labels = any(x != -100 for x in row[LABELS_KEY])
-    return max_prompt_token_length_ok and max_token_length_ok and (contain_some_labels or not need_contain_labels)
+    constraint_type = row.get("constraint_type")
+    constraint_type_ok = True
+    if excluded_constraint_types:
+        constraint_type_ok = constraint_type not in excluded_constraint_types
+
+    return (
+        max_prompt_token_length_ok
+        and max_token_length_ok
+        and (contain_some_labels or not need_contain_labels)
+        and constraint_type_ok
+    )
 
 
 TRANSFORM_FNS = {

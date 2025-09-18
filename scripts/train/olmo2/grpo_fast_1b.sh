@@ -1,0 +1,45 @@
+python open_instruct/grpo_fast.py \
+    --exp_name olmo2_1b_grpo_fast \
+    --beta 0.0 \
+    --num_unique_prompts_rollout 8 \
+    --num_samples_per_prompt_rollout 2 \
+    --kl_estimator kl3 \
+    --learning_rate 5e-7 \
+    --dataset_mixer_list allenai/RLVR-GSM-MATH-IF-Mixed-Constraints 1.0 \
+    --dataset_mixer_list_splits train \
+    --dataset_mixer_eval_list allenai/RLVR-GSM-MATH-IF-Mixed-Constraints 16 \
+    --dataset_mixer_eval_list_splits train \
+    --max_token_length 2048 \
+    --max_prompt_token_length 2048 \
+    --response_length 2048 \
+    --pack_length 4096 \
+    --model_name_or_path allenai/OLMo-2-0425-1B-DPO \
+    --model_revision main \
+    --tokenizer_name_or_path allenai/OLMo-2-0425-1B-DPO \
+    --tokenizer_revision main \
+    --add_bos \
+    --stop_strings "</answer>" \
+    --apply_r1_style_format_reward True \
+    --apply_verifiable_reward True \
+    --non_stop_penalty True \
+    --non_stop_penalty_value 0.0 \
+    --chat_template_name r1_simple_chat_postpend_think \
+    --temperature 1.0 \
+    --total_episodes 1000000 \
+    --deepspeed_stage 2 \
+    --per_device_train_batch_size 1 \
+    --num_mini_batches 1 \
+    --num_learners_per_node 1 \
+    --num_epochs 1 \
+    --vllm_tensor_parallel_size 1 \
+    --vllm_num_engines 1 \
+    --vllm_gpu_memory_utilization 0.5 \
+    --single_gpu_mode \
+    --inference_batch_size 1 \
+    --lr_scheduler_type linear \
+    --seed 1 \
+    --local_eval_every 25 \
+    --save_freq 100 \
+    --push_to_hub false \
+    --output_dir output/olmo2_1b_grpo_fast \
+    --gradient_checkpointing

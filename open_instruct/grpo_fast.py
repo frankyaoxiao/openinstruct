@@ -159,6 +159,8 @@ class Args:
     """The dataset splits to use for evaluation"""
     dataset_transform_fn: list[str] = field(default_factory=lambda: ["rlvr_tokenize_v1", "rlvr_filter_v1"])
     """The list of transform functions to apply to the dataset."""
+    rlvr_excluded_constraint_types: List[str] = field(default_factory=list)
+    """Optional list of RLVR constraint types to exclude during filtering."""
     dataset_cache_mode: Literal["hf", "local"] = "local"
     """The mode to use for caching the dataset."""
     dataset_local_cache_dir: str = "local_dataset_cache"
@@ -1915,7 +1917,11 @@ def setup_datasets(args: Args, tc: TokenizerConfig, tokenizer: PreTrainedTokeniz
     """Set up training and evaluation datasets."""
     transform_fn_args = [
         {},
-        {"max_token_length": args.max_token_length, "max_prompt_token_length": args.max_prompt_token_length},
+        {
+            "max_token_length": args.max_token_length,
+            "max_prompt_token_length": args.max_prompt_token_length,
+            "excluded_constraint_types": args.rlvr_excluded_constraint_types,
+        },
     ]
     train_dataset = get_cached_dataset_tulu(
         dataset_mixer_list=args.dataset_mixer_list,
@@ -1930,6 +1936,11 @@ def setup_datasets(args: Args, tc: TokenizerConfig, tokenizer: PreTrainedTokeniz
         dataset_skip_cache=args.dataset_skip_cache,
     )
     train_dataset = train_dataset.shuffle(seed=args.seed)
+    logger.info(
+        "Loaded training dataset with %d examples%s",
+        len(train_dataset),
+        " (after RLVR constraint filtering)" if args.rlvr_excluded_constraint_types else "",
+    )
 
     eval_dataset = None
     if len(args.dataset_mixer_eval_list) > 0:
@@ -1947,6 +1958,12 @@ def setup_datasets(args: Args, tc: TokenizerConfig, tokenizer: PreTrainedTokeniz
         )
         if args.shuffle_eval_dataset:
             eval_dataset = eval_dataset.shuffle(seed=args.seed)
+
+        logger.info(
+            "Loaded evaluation dataset with %d examples%s",
+            len(eval_dataset),
+            " (after RLVR constraint filtering)" if args.rlvr_excluded_constraint_types else "",
+        )
 
     visualize_token(train_dataset[0][INPUT_IDS_PROMPT_KEY], tokenizer)
 
