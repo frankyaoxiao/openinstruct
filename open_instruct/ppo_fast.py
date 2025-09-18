@@ -99,7 +99,6 @@ from open_instruct.ground_truth_utils import (
     soft_format_reward_func,
 )
 from open_instruct.model_utils import (
-    Batch,
     ModelConfig,
     apply_verifiable_reward,
     disable_dropout_in_model,
@@ -147,9 +146,7 @@ class Args:
     """The dataset splits to use for training"""
     dataset_mixer_eval_list_splits: List[str] = field(default_factory=lambda: ["test"])
     """The dataset splits to use for evaluation"""
-    dataset_transform_fn: list[str] = field(
-        default_factory=lambda: ["rlvr_constraint_filter_v1", "rlvr_tokenize_v1", "rlvr_filter_v1"]
-    )
+    dataset_transform_fn: list[str] = field(default_factory=lambda: ["rlvr_tokenize_v1", "rlvr_filter_v1"])
     """The list of transform functions to apply to the dataset."""
     dataset_cache_mode: Literal["hf", "local"] = "local"
     """The mode to use for caching the dataset."""
@@ -1553,7 +1550,6 @@ def main(args: Args, tc: TokenizerConfig, model_config: ModelConfig, reward_fn: 
     # Set up datasets
     transform_fn_args = [
         {},
-        {},
         {"max_token_length": args.max_token_length, "max_prompt_token_length": args.max_prompt_token_length},
     ]
     train_dataset = get_cached_dataset_tulu(
@@ -2017,18 +2013,12 @@ if __name__ == "__main__":
 
         if args.apply_verifiable_reward:
             with Timer("[Data Preparation Thread] Calculating rewards -- 🏆 Applying verifiable reward"):
-                reward_batch = Batch(
-                    queries=[],
-                    ground_truths=ground_truths,
-                    datasets=datasets,
-                    raw_queries=None,
-                    indices=None,
-                )
                 verifiable_rewards, per_func_rewards = await apply_verifiable_reward(
                     reward_fn_mapping,
                     responses,
                     decoded_responses,
-                    reward_batch,
+                    ground_truths,
+                    datasets,
                     reward_mult=args.verification_reward,
                     queries=queries,
                 )

@@ -96,7 +96,6 @@ from open_instruct.dataset_transformation import (
 )
 from open_instruct.ground_truth_utils import build_all_verifiers, soft_format_reward_func
 from open_instruct.model_utils import (
-    Batch,
     ModelConfig,
     apply_verifiable_reward,
     disable_dropout_in_model,
@@ -120,8 +119,8 @@ from open_instruct.utils import (
     maybe_update_beaker_description,
     maybe_use_ai2_hf_entity,
     maybe_use_ai2_wandb_entity,
+    setup_logger,
 )
-from open_instruct import logger_utils
 from open_instruct.vllm_utils3 import create_vllm_engines, init_process_group
 
 api = HfApi()
@@ -139,12 +138,8 @@ class Args:
     """The dataset splits to use for training"""
     dataset_mixer_eval_list_splits: Optional[List[str]] = None
     """The dataset splits to use for evaluation"""
-    dataset_transform_fn: list[str] = field(
-        default_factory=lambda: ["rlvr_constraint_filter_v1", "rlvr_tokenize_v1", "rlvr_filter_v1"]
-    )
+    dataset_transform_fn: list[str] = field(default_factory=lambda: ["rlvr_tokenize_v1", "rlvr_filter_v1"])
     """The list of transform functions to apply to the dataset."""
-    max_length_verifier_max_length: int = 4096
-    """Maximum length expected by MaxLengthVerifier"""
     dataset_cache_mode: Literal["hf", "local"] = "local"
     """The mode to use for caching the dataset."""
     dataset_local_cache_dir: str = "local_dataset_cache"
@@ -614,7 +609,7 @@ class ShufflingIterator:
 
 class RayProcess:
     def __init__(self, world_size, rank, local_rank, master_addr, master_port):
-        logger_utils.setup_logger(__name__)
+        setup_logger()
         self.world_size = world_size
         self.rank = rank
         self.local_rank = local_rank
@@ -1220,19 +1215,13 @@ class PolicyTrainerRayProcess(RayProcess):
                         ground_truth = ground_truths[i : i + args.local_rollout_forward_batch_size]
                         dataset = datasets[i : i + args.local_rollout_forward_batch_size]
                         decoded_response = tokenizer.batch_decode(postprocessed_response)
-                        reward_batch = Batch(
-                            queries=[],
-                            ground_truths=ground_truth,
-                            datasets=dataset,
-                            raw_queries=None,
-                            indices=None,
-                        )
                         verifiable_reward, per_func_reward = asyncio.run(
                             apply_verifiable_reward(
                                 reward_fn_mapping=reward_fn_mapping,
                                 responses=postprocessed_response,
                                 decoded_responses=decoded_response,
-                                batch=reward_batch,
+                                ground_truths=ground_truth,
+                                datasets=dataset,
                                 reward_mult=args.verification_reward,
                             )
                         )
@@ -1750,7 +1739,6 @@ def main(args: Args, tc: TokenizerConfig, model_config: ModelConfig):
     # Set up datasets
     transform_fn_args = [
         {},
-        {},
         {"max_token_length": args.max_token_length, "max_prompt_token_length": args.max_prompt_token_length},
     ]
     train_dataset = get_cached_dataset_tulu(
@@ -1792,7 +1780,7 @@ def main(args: Args, tc: TokenizerConfig, model_config: ModelConfig):
 
     # create the model and optimizer
     pg = None
-    bundles = [{"GPU": actor_num_gpus, "CPU": actor_num_gpus * 6} for actor_num_gpus in args.actor_num_gpus_per_node]
+    bundles = [{"GPU": actor_num_gpus, "CPU": actor_num_gpus * 10} for actor_num_gpus in args.actor_num_gpus_per_node]
     pg = placement_group(bundles, strategy="STRICT_SPREAD")
     ray.get(pg.ready())
 

@@ -3,15 +3,7 @@ FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
 ARG DEBIAN_FRONTEND="noninteractive"
 ENV TZ="America/Los_Angeles"
 
-# Fix GPG key issues with repositories
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* \
-    && apt-get update --allow-unauthenticated \
-    && apt-get install -y --no-install-recommends --allow-unauthenticated \
-    ca-certificates \
-    gnupg \
-    lsb-release \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
     wget \
@@ -86,7 +78,7 @@ COPY eval eval
 COPY configs configs
 COPY scripts scripts
 COPY mason.py mason.py
-# COPY oe-eval-internal oe-eval-internal  # Not needed for training
+COPY oe-eval-internal oe-eval-internal
 COPY open_instruct open_instruct
 
 # Add build arguments for git information

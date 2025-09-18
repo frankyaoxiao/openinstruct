@@ -486,12 +486,12 @@ and you will get the output between the <output> and </output> tags.
     from open_instruct.dataset_transformation import TokenizerConfig, get_cached_dataset_tulu
 
     tc = TokenizerConfig(tokenizer_name_or_path=model_name, chat_template_name="r1_simple_chat_postpend_think_tools7")
-    transform_fn_args = [{}, {}, {"max_token_length": 8192, "max_prompt_token_length": 2048}]
+    transform_fn_args = [{}, {"max_token_length": 8192, "max_prompt_token_length": 2048}]
     train_dataset = get_cached_dataset_tulu(
         dataset_mixer_list=["ai2-adapt-dev/rlvr_open_reasoner_math", "1.0"],
         dataset_mixer_list_splits=["train"],
         tc=tc,
-        dataset_transform_fn=["rlvr_constraint_filter_v1", "rlvr_tokenize_v1", "rlvr_filter_v1"],
+        dataset_transform_fn=["rlvr_tokenize_v1", "rlvr_filter_v1"],
         transform_fn_args=transform_fn_args,
         dataset_cache_mode="local",
         hf_entity="allenai",

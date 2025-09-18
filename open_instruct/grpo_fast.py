@@ -157,9 +157,7 @@ class Args:
     """The dataset splits to use for training"""
     dataset_mixer_eval_list_splits: List[str] = field(default_factory=lambda: ["test"])
     """The dataset splits to use for evaluation"""
-    dataset_transform_fn: list[str] = field(
-        default_factory=lambda: ["rlvr_constraint_filter_v1", "rlvr_tokenize_v1", "rlvr_filter_v1"]
-    )
+    dataset_transform_fn: list[str] = field(default_factory=lambda: ["rlvr_tokenize_v1", "rlvr_filter_v1"])
     """The list of transform functions to apply to the dataset."""
     dataset_cache_mode: Literal["hf", "local"] = "local"
     """The mode to use for caching the dataset."""
@@ -1916,7 +1914,6 @@ def setup_experiment_tracking(args: Args, tc: TokenizerConfig, model_config: Mod
 def setup_datasets(args: Args, tc: TokenizerConfig, tokenizer: PreTrainedTokenizer):
     """Set up training and evaluation datasets."""
     transform_fn_args = [
-        {},
         {},
         {"max_token_length": args.max_token_length, "max_prompt_token_length": args.max_prompt_token_length},
     ]

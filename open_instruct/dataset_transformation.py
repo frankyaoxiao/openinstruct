@@ -1232,30 +1232,6 @@ def rlvr_tokenize_v2(
     return row
 
 
-def rlvr_constraint_filter_v1(
-    row: Dict[str, Any],
-    tokenizer: PreTrainedTokenizer,
-    blocked_constraint_types: Optional[List[str]] = None,
-):
-    """Filter out RLVR samples whose constraint type is in the blocked list."""
-
-    blocked = blocked_constraint_types or [
-        "Number Paragraphs",
-        "Number Words",
-        "Number Sentences",
-        "Number Paragraphs + First Word in i-th Paragraph",
-    ]
-
-    constraint_type = row.get("constraint_type")
-    if constraint_type is None:
-        return True
-
-    if isinstance(constraint_type, list):
-        return not any(ct in blocked for ct in constraint_type if isinstance(ct, str))
-
-    return constraint_type not in blocked
-
-
 def rlvr_filter_v1(
     row: Dict[str, Any],
     tokenizer: PreTrainedTokenizer,
@@ -1276,7 +1252,6 @@ def rlvr_filter_v1(
 
 
 TRANSFORM_FNS = {
-    "rlvr_constraint_filter_v1": (rlvr_constraint_filter_v1, "filter"),
     "sft_tokenize_v1": (sft_tokenize_v1, "map"),
     "sft_tokenize_mask_out_prompt_v1": (sft_tokenize_mask_out_prompt_v1, "map"),
     "sft_filter_v1": (sft_filter_v1, "filter"),
@@ -1942,8 +1917,8 @@ def test_get_cached_dataset_tulu_rlvr():
     )
     dataset_mixer_list = ["allenai/RLVR-GSM-MATH-IF-Mixed-Constraints", "1.0"]
     dataset_mixer_list_splits = ["train"]
-    dataset_transform_fn = ["rlvr_constraint_filter_v1", "rlvr_tokenize_v1", "rlvr_filter_v1"]
-    transform_fn_args = [{}, {}, {"max_token_length": 2048, "max_prompt_token_length": 2048}]
+    dataset_transform_fn = ["rlvr_tokenize_v1", "rlvr_filter_v1"]
+    transform_fn_args = [{}, {"max_token_length": 2048, "max_prompt_token_length": 2048}]
     # allenai/dataset-mix-cached/tree/0ff0043e56
     dataset = get_cached_dataset_tulu(
         dataset_mixer_list,
