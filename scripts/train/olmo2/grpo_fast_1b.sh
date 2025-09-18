@@ -18,12 +18,10 @@ python open_instruct/grpo_fast.py \
     --tokenizer_name_or_path allenai/OLMo-2-0425-1B-DPO \
     --tokenizer_revision main \
     --add_bos \
-    --stop_strings "</answer>" \
-    --apply_r1_style_format_reward True \
+    --chat_template_name tulu \
     --apply_verifiable_reward True \
     --non_stop_penalty True \
     --non_stop_penalty_value 0.0 \
-    --chat_template_name r1_simple_chat_postpend_think \
     --temperature 1.0 \
     --total_episodes 1000000 \
     --deepspeed_stage 2 \
