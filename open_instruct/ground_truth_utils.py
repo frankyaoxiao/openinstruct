@@ -323,6 +323,10 @@ class IFEvalVerifier(VerifierFunction):
                     logger.warning("Unable to parse constraint dict: %s", constraint_dict)
                     return VerificationResult(score=0.0)
         answer = remove_thinking_section(prediction)
+        if "instruction_id" not in constraint_dict or "kwargs" not in constraint_dict:
+            logger.warning("Constraint missing required keys: %s", constraint_dict)
+            return VerificationResult(score=0.0)
+
         instruction_keys = constraint_dict["instruction_id"]
         args_list = constraint_dict["kwargs"]
         rewards = []
