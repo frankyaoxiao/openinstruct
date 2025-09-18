@@ -291,10 +291,37 @@ class IFEvalVerifier(VerifierFunction):
         self, tokenized_prediction: List[int], prediction: str, label: Union[str, Dict], query: Optional[str] = None
     ) -> VerificationResult:
         instruction_dict = instructions_registry.INSTRUCTION_DICT
-        constraint_dict = ast.literal_eval(label)
-        constraint_dict = constraint_dict[0]
+        # RLVR/IFEval data may store constraints as strings, JSON blobs, or
+        # already-materialized dict/list objects. Be tolerant of all cases.
+        if isinstance(label, (dict, list)):
+            constraint_data = label
+        else:
+            try:
+                constraint_data = ast.literal_eval(label)
+            except Exception:
+                try:
+                    constraint_data = json.loads(label)
+                except Exception:
+                    logger.warning("Unable to parse constraint label: %s", label)
+                    return VerificationResult(score=0.0)
+
+        if isinstance(constraint_data, list):
+            if not constraint_data:
+                logger.warning("Empty constraint list: %s", constraint_data)
+                return VerificationResult(score=0.0)
+            constraint_dict = constraint_data[0]
+        else:
+            constraint_dict = constraint_data
+
         if isinstance(constraint_dict, str):
-            constraint_dict = json.loads(constraint_dict)
+            try:
+                constraint_dict = json.loads(constraint_dict)
+            except Exception:
+                try:
+                    constraint_dict = ast.literal_eval(constraint_dict)
+                except Exception:
+                    logger.warning("Unable to parse constraint dict: %s", constraint_dict)
+                    return VerificationResult(score=0.0)
         answer = remove_thinking_section(prediction)
         instruction_keys = constraint_dict["instruction_id"]
         args_list = constraint_dict["kwargs"]
