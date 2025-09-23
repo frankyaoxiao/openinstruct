@@ -25,7 +25,7 @@ accelerate launch \
     --with_tracking \
     --logging_steps 1 \
     --seed 8 \
-    --output_dir output/olmo2_7b_sft_from_dpo_single_gpu \
+    --output_dir output/olmo2_7b_sft_from_dpo \
     --gradient_checkpointing \
     --checkpointing_steps 1000 \
-    --keep_last_n_checkpoints 50 \ 
+    --keep_last_n_checkpoints 50
