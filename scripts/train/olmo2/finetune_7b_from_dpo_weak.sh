@@ -12,7 +12,7 @@ accelerate launch \
     --add_bos \
     --dataset_mixer_list allenai/tulu-3-sft-olmo-2-mixture-0225 1.0 \
     --use_flash_attn \
-    --max_seq_length 4096 \
+    --max_seq_length 3072 \
     --per_device_train_batch_size 1 \
     --gradient_accumulation_steps 8 \
     --learning_rate 4e-6 \
