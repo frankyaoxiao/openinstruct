@@ -26,6 +26,7 @@ accelerate launch \
     --dpo_beta 5 \
     --use_flash_attn \
     --gradient_checkpointing \
+    --exclude_if_taxonomy_source \
     --checkpointing_steps 1000 \
     --keep_last_n_checkpoints 50 \
     --report_to wandb \

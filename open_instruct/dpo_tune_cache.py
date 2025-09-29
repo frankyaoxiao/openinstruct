@@ -182,6 +182,15 @@ class FlatArguments:
     """The list of transform functions to apply to the dataset."""
     dataset_target_columns: List[str] = field(default_factory=lambda: TOKENIZED_PREFERENCE_DATASET_KEYS)
     """The columns to use for the dataset."""
+    exclude_if_taxonomy_source: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "If True, drop preference examples whose `source` field is "
+                "'ai2-adapt-dev/sft_v3.9_if_taxonomy_olmo2_7b'."
+            )
+        },
+    )
     dataset_cache_mode: Literal["hf", "local"] = "local"
     """The mode to use for caching the dataset."""
     dataset_local_cache_dir: str = "local_dataset_cache"
@@ -560,6 +569,13 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             dataset_local_cache_dir=args.dataset_local_cache_dir,
             dataset_skip_cache=args.dataset_skip_cache,
         )
+        if args.exclude_if_taxonomy_source:
+            target_source = "ai2-adapt-dev/sft_v3.9_if_taxonomy_olmo2_7b"
+
+            def _keep_example(example):
+                return example.get("source") != target_source
+
+            train_dataset = train_dataset.filter(_keep_example)
         train_dataset = train_dataset.shuffle(seed=args.seed)
         train_dataset.set_format(type="pt")
     if accelerator.is_main_process:
