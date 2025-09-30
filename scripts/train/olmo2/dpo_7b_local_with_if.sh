@@ -26,7 +26,6 @@ ACCELERATE_SAVE_WEIGHTS_ONLY=1 accelerate launch \
     --dpo_beta 5 \
     --use_flash_attn \
     --gradient_checkpointing \
-    --exclude_if_taxonomy_source \
     --max_train_samples 20000 \
     --checkpointing_steps 100 \
     --keep_last_n_checkpoints 50 \
