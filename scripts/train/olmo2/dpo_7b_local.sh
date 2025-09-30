@@ -27,6 +27,7 @@ accelerate launch \
     --use_flash_attn \
     --gradient_checkpointing \
     --exclude_if_taxonomy_source \
+    --max_train_samples 10000 \
     --checkpointing_steps 1000 \
     --keep_last_n_checkpoints 50 \
     --report_to wandb \
