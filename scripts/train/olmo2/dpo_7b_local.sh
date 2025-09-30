@@ -1,4 +1,4 @@
-ACCELERATE_SAVE_WEIGHTS_ONLY=1 accelerate launch \
+accelerate launch \
     --num_machines 1 \
     --num_processes 2 \
     --mixed_precision bf16 \
