@@ -64,9 +64,10 @@ from transformers.training_args import _convert_str_dict
 from open_instruct import logger_utils
 from open_instruct.dataset_transformation import (
     CHOSEN_INPUT_IDS_KEY,
+    DATASET_ORIGIN_KEY,
     TOKENIZED_PREFERENCE_DATASET_KEYS,
     TokenizerConfig,
-    get_cached_dataset_tulu,
+    get_cached_dataset_tulu_with_statistics,
     visualize_token,
 )
 from open_instruct.dpo_utils import (
@@ -180,7 +181,9 @@ class FlatArguments:
         default_factory=lambda: ["preference_tulu_tokenize_and_truncate_v1", "preference_tulu_filter_v1"]
     )
     """The list of transform functions to apply to the dataset."""
-    dataset_target_columns: List[str] = field(default_factory=lambda: TOKENIZED_PREFERENCE_DATASET_KEYS)
+    dataset_target_columns: List[str] = field(
+        default_factory=lambda: TOKENIZED_PREFERENCE_DATASET_KEYS + ["source", DATASET_ORIGIN_KEY]
+    )
     """The columns to use for the dataset."""
     exclude_if_taxonomy_source: bool = field(
         default=False,
@@ -556,7 +559,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
         args.dataset_mixer_list = [item for pair in args.dataset_mixer.items() for item in pair]
     with accelerator.main_process_first():
         transform_fn_args = [{"max_seq_length": args.max_seq_length}, {}]
-        train_dataset = get_cached_dataset_tulu(
+        train_dataset, _ = get_cached_dataset_tulu_with_statistics(
             dataset_mixer_list=args.dataset_mixer_list,
             dataset_mixer_list_splits=args.dataset_mixer_list_splits,
             tc=tc,
@@ -568,14 +571,33 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             hf_entity=args.hf_entity,
             dataset_local_cache_dir=args.dataset_local_cache_dir,
             dataset_skip_cache=args.dataset_skip_cache,
+            drop_dataset_source=False,
         )
+        filter_log_path = None
+        if accelerator.is_main_process and args.output_dir is not None:
+            filter_log_path = os.path.join(args.output_dir, "filter_summary.txt")
         if args.exclude_if_taxonomy_source:
             target_source = "ai2-adapt-dev/sft_v3.9_if_taxonomy_olmo2_7b"
 
             def _keep_example(example):
-                return example.get("source") != target_source
+                source_value = example.get("source")
+                if source_value is None:
+                    source_value = example.get("dataset_source")
+                return source_value != target_source
 
+            before_filter = len(train_dataset)
             train_dataset = train_dataset.filter(_keep_example)
+            after_filter = len(train_dataset)
+            removed = before_filter - after_filter
+            info_msg = (
+                "Filtered out %d of %d examples from source %s.\n"
+                % (removed, before_filter, target_source)
+            )
+            logger.info(info_msg.strip())
+            if filter_log_path is not None:
+                os.makedirs(args.output_dir, exist_ok=True)
+                with open(filter_log_path, "a", encoding="utf-8") as f:
+                    f.write(info_msg)
         train_dataset = train_dataset.shuffle(seed=args.seed)
         train_dataset.set_format(type="pt")
     if accelerator.is_main_process:

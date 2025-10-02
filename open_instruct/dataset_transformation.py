@@ -1119,7 +1119,7 @@ def preference_tulu_tokenize_and_truncate_v1(
         {DEFAULT_SFT_MESSAGES_KEY: rejected_messages}, tokenizer, max_seq_length
     )
 
-    return {
+    result = {
         CHOSEN_INPUT_IDS_KEY: chosen_encoded["input_ids"],
         CHOSEN_LABELS_KEY: chosen_encoded["labels"],
         CHOSEN_ATTENTION_MASK_KEY: chosen_encoded["attention_mask"],
@@ -1127,6 +1127,11 @@ def preference_tulu_tokenize_and_truncate_v1(
         REJECTED_LABELS_KEY: rejected_encoded["labels"],
         REJECTED_ATTENTION_MASK_KEY: rejected_encoded["attention_mask"],
     }
+    if "source" in row:
+        result["source"] = row["source"]
+    if DATASET_ORIGIN_KEY in row:
+        result[DATASET_ORIGIN_KEY] = row[DATASET_ORIGIN_KEY]
+    return result
 
 
 def preference_tulu_tokenize_and_truncate_v1_2(
@@ -1155,7 +1160,7 @@ def preference_tulu_tokenize_and_truncate_v1_2(
         {DEFAULT_SFT_MESSAGES_KEY: rejected_messages}, tokenizer, max_seq_length
     )
 
-    return {
+    result = {
         CHOSEN_INPUT_IDS_KEY: chosen_encoded["input_ids"],
         CHOSEN_LABELS_KEY: chosen_encoded["labels"],
         CHOSEN_ATTENTION_MASK_KEY: chosen_encoded["attention_mask"],
@@ -1163,6 +1168,11 @@ def preference_tulu_tokenize_and_truncate_v1_2(
         REJECTED_LABELS_KEY: rejected_encoded["labels"],
         REJECTED_ATTENTION_MASK_KEY: rejected_encoded["attention_mask"],
     }
+    if "source" in row:
+        result["source"] = row["source"]
+    if DATASET_ORIGIN_KEY in row:
+        result[DATASET_ORIGIN_KEY] = row[DATASET_ORIGIN_KEY]
+    return result
 
 
 def preference_tulu_filter_v1(row: Dict[str, Any], tokenizer: PreTrainedTokenizer):
