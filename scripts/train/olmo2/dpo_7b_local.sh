@@ -1,6 +1,6 @@
 accelerate launch \
     --num_machines 1 \
-    --num_processes 1 \
+    --num_processes 2 \
     --mixed_precision bf16 \
     --use_deepspeed \
     --deepspeed_config_file configs/ds_configs/stage3_no_offloading_accelerate.conf \
