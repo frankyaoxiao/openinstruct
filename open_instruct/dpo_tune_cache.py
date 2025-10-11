@@ -42,6 +42,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import partial
+from itertools import islice
 from typing import Callable, List, Literal, Optional, Union
 
 import datasets
@@ -193,6 +194,28 @@ class FlatArguments:
                 "'ai2-adapt-dev/sft_v3.9_if_taxonomy_olmo2_7b'."
             )
         },
+    )
+    max_preference_length: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "If set, discard preference examples whose chosen or rejected sequences exceed this token length "
+                "after tokenization."
+            )
+        },
+    )
+    ranking_filter_jsonl: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Path to a JSONL file containing ranked preference example uids. The top "
+                "`ranking_filter_top_n` entries will be removed before training."
+            )
+        },
+    )
+    ranking_filter_top_n: Optional[int] = field(
+        default=None,
+        metadata={"help": "Number of top-ranked examples to remove using `ranking_filter_jsonl`."},
     )
     dataset_cache_mode: Literal["hf", "local"] = "local"
     """The mode to use for caching the dataset."""
@@ -573,31 +596,155 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             dataset_skip_cache=args.dataset_skip_cache,
             drop_dataset_source=False,
         )
+
         filter_log_path = None
         if accelerator.is_main_process and args.output_dir is not None:
             filter_log_path = os.path.join(args.output_dir, "filter_summary.txt")
+
+        PREF_INDEX_COLUMN = "preference_index"
+        train_dataset = train_dataset.map(
+            lambda example, idx: {PREF_INDEX_COLUMN: int(idx)},
+            with_indices=True,
+            desc="Annotating preference indices",
+        )
+
+        length_removed = 0
+        if args.max_preference_length is not None:
+            max_len = args.max_preference_length
+
+            def _within_length(example):
+                return (
+                    len(example[CHOSEN_INPUT_IDS_KEY]) <= max_len
+                    and len(example[REJECTED_INPUT_IDS_KEY]) <= max_len
+                )
+
+            before_filter = len(train_dataset)
+            train_dataset = train_dataset.filter(
+                _within_length,
+                desc=f"Filtering length ≤ {max_len}",
+            )
+            length_removed = before_filter - len(train_dataset)
+            logger.info(
+                "Filtered out %d of %d examples exceeding length %d.",
+                length_removed,
+                before_filter,
+                max_len,
+            )
+
+        ranking_removed = 0
+        ranking_missing: List[int] = []
+        ranking_preview: List[int] = []
+        if args.ranking_filter_jsonl and args.ranking_filter_top_n:
+            ranking_path = args.ranking_filter_jsonl
+            top_n = max(0, args.ranking_filter_top_n)
+            ranking_uids: List[int] = []
+            try:
+                with open(ranking_path, "r", encoding="utf-8") as f:
+                    for entry in islice(f, top_n):
+                        entry = entry.strip()
+                        if not entry:
+                            continue
+                        data = json.loads(entry)
+                        uid = data.get("uid")
+                        if uid is None:
+                            continue
+                        try:
+                            ranking_uids.append(int(uid))
+                        except ValueError:
+                            logger.warning("Ranking JSONL entry has non-integer uid: %s", uid)
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(
+                    f"Ranking filter file not found: {ranking_path}"
+                ) from exc
+
+            if ranking_uids:
+                pref_values = set(train_dataset[PREF_INDEX_COLUMN])
+                available = [uid for uid in ranking_uids if uid in pref_values]
+                ranking_missing = [uid for uid in ranking_uids if uid not in pref_values]
+                ranking_preview = available[:10]
+
+                if available:
+                    available_set = set(available)
+
+                    def _keep_ranked(example):
+                        return example[PREF_INDEX_COLUMN] not in available_set
+
+                    before_filter = len(train_dataset)
+                    train_dataset = train_dataset.filter(
+                        _keep_ranked,
+                        desc="Filtering ranking-specified examples",
+                    )
+                    ranking_removed = before_filter - len(train_dataset)
+                    logger.info(
+                        "Ranking filter removed %d examples (requested=%d, available=%d).",
+                        ranking_removed,
+                        len(ranking_uids),
+                        len(available),
+                    )
+                else:
+                    logger.info(
+                        "Ranking filter skipped: none of the top %d uids were present after previous filters.",
+                        len(ranking_uids),
+                    )
+            else:
+                logger.info(
+                    "Ranking filter skipped: no entries read from %s (top_n=%d).",
+                    ranking_path,
+                    top_n,
+                )
+
+        taxonomy_removed = 0
         if args.exclude_if_taxonomy_source:
             target_source = "ai2-adapt-dev/sft_v3.9_if_taxonomy_olmo2_7b"
 
             def _keep_example(example):
                 source_value = example.get("source")
                 if source_value is None:
-                    source_value = example.get("dataset_source")
+                    source_value = example.get(DATASET_ORIGIN_KEY)
                 return source_value != target_source
 
             before_filter = len(train_dataset)
             train_dataset = train_dataset.filter(_keep_example)
             after_filter = len(train_dataset)
-            removed = before_filter - after_filter
-            info_msg = (
-                "Filtered out %d of %d examples from source %s.\n"
-                % (removed, before_filter, target_source)
+            taxonomy_removed = before_filter - after_filter
+            logger.info(
+                "Filtered out %d of %d examples from source %s.",
+                taxonomy_removed,
+                before_filter,
+                target_source,
             )
-            logger.info(info_msg.strip())
-            if filter_log_path is not None:
-                os.makedirs(args.output_dir, exist_ok=True)
-                with open(filter_log_path, "a", encoding="utf-8") as f:
-                    f.write(info_msg)
+
+        extra_columns = [col for col in ("source", DATASET_ORIGIN_KEY, PREF_INDEX_COLUMN) if col in train_dataset.column_names]
+        if extra_columns:
+            train_dataset = train_dataset.remove_columns(extra_columns)
+
+        logger.info(
+            "Filtering summary → length_removed=%d, ranking_removed=%d, taxonomy_removed=%d, remaining=%d",
+            length_removed,
+            ranking_removed,
+            taxonomy_removed,
+            len(train_dataset),
+        )
+
+        if ranking_removed and ranking_preview:
+            logger.info("Top ranking uids removed: %s", ranking_preview)
+        if ranking_missing:
+            logger.info(
+                "Ranking filter skipped %d entries not present after previous filters: %s",
+                len(ranking_missing),
+                ranking_missing[:10],
+            )
+
+        if filter_log_path is not None:
+            os.makedirs(args.output_dir, exist_ok=True)
+            with open(filter_log_path, "a", encoding="utf-8") as f:
+                f.write(
+                    (
+                        "length_removed=%d, ranking_removed=%d, taxonomy_removed=%d, remaining=%d\n"
+                        % (length_removed, ranking_removed, taxonomy_removed, len(train_dataset))
+                    )
+                )
+
         train_dataset = train_dataset.shuffle(seed=args.seed)
         train_dataset.set_format(type="pt")
     if accelerator.is_main_process:
