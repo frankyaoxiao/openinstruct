@@ -1,6 +1,6 @@
-ACCELERATE_SAVE_WEIGHTS_ONLY=1 accelerate launch \
+accelerate launch \
     --num_machines 1 \
-    --num_processes 2 \
+    --num_processes 1 \
     --mixed_precision bf16 \
     --use_deepspeed \
     --deepspeed_config_file configs/ds_configs/stage3_no_offloading_accelerate.conf \
@@ -27,7 +27,6 @@ ACCELERATE_SAVE_WEIGHTS_ONLY=1 accelerate launch \
     --use_flash_attn \
     --gradient_checkpointing \
     --exclude_if_taxonomy_source \
-    --max_preference_length 3000 \
     --ranking_filter_jsonl /media/rogerio-lab/rogerio_hd/projects/IFEval/artifacts/attribution/run_20251010_214727/rankings_dpo.jsonl \
     --ranking_filter_top_n 1000 \
     --checkpointing_steps 100 \

@@ -66,6 +66,7 @@ from open_instruct import logger_utils
 from open_instruct.dataset_transformation import (
     CHOSEN_INPUT_IDS_KEY,
     DATASET_ORIGIN_KEY,
+    REJECTED_INPUT_IDS_KEY,
     TOKENIZED_PREFERENCE_DATASET_KEYS,
     TokenizerConfig,
     get_cached_dataset_tulu_with_statistics,
