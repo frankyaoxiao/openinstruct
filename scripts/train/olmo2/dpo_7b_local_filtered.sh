@@ -1,6 +1,6 @@
 accelerate launch \
     --num_machines 1 \
-    --num_processes 1 \
+    --num_processes 2 \
     --mixed_precision bf16 \
     --use_deepspeed \
     --deepspeed_config_file configs/ds_configs/stage3_no_offloading_accelerate.conf \
@@ -27,7 +27,7 @@ accelerate launch \
     --use_flash_attn \
     --gradient_checkpointing \
     --exclude_if_taxonomy_source \
-    --ranking_filter_jsonl /media/rogerio-lab/rogerio_hd/projects/IFEval/artifacts/attribution/run_20251011_175448/rankings_dpo.jsonl \
+    --ranking_filter_jsonl rankings_dpo.jsonl \
     --ranking_filter_top_n 1000 \
     --checkpointing_steps 250 \
     --keep_last_n_checkpoints 50 \
