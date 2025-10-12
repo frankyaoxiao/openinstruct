@@ -27,10 +27,10 @@ accelerate launch \
     --use_flash_attn \
     --gradient_checkpointing \
     --exclude_if_taxonomy_source \
-    --ranking_filter_jsonl /media/rogerio-lab/rogerio_hd/projects/IFEval/artifacts/attribution/run_20251010_214727/rankings_dpo.jsonl \
+    --ranking_filter_jsonl /media/rogerio-lab/rogerio_hd/projects/IFEval/artifacts/attribution/run_20251011_175448/rankings_dpo.jsonl \
     --ranking_filter_top_n 1000 \
-    --checkpointing_steps 100 \
+    --checkpointing_steps 250 \
     --keep_last_n_checkpoints 50 \
-    --report_to wandb \
+    --max_train_samples 50000 \
     --with_tracking \
     --output_dir output/olmo2_7b_dpo_local
