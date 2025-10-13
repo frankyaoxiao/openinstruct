@@ -1,11 +1,11 @@
 accelerate launch \
     --num_machines 1 \
-    --num_processes 2 \
+    --num_processes 8 \
     --mixed_precision bf16 \
     --use_deepspeed \
     --deepspeed_config_file configs/ds_configs/stage3_no_offloading_accelerate.conf \
     open_instruct/dpo_tune_cache.py \
-    --exp_name olmo2_7b_dpo_local \
+    --exp_name olmo2_7b_dpo_filtered_30k \
     --model_name_or_path allenai/OLMo-2-1124-7B-SFT \
     --model_revision main \
     --tokenizer_name allenai/OLMo-2-1124-7B-SFT \
@@ -15,7 +15,7 @@ accelerate launch \
     --dataset_mixer_list allenai/olmo-2-1124-7b-preference-mix 1.0 \
     --max_seq_length 2048 \
     --per_device_train_batch_size 1 \
-    --gradient_accumulation_steps 64 \
+    --gradient_accumulation_steps 16 \
     --learning_rate 1e-6 \
     --lr_scheduler_type linear \
     --warmup_ratio 0.1 \
@@ -26,8 +26,7 @@ accelerate launch \
     --dpo_beta 5 \
     --use_flash_attn \
     --gradient_checkpointing \
-    --exclude_if_taxonomy_source \
-    --ranking_filter_jsonl /media/rogerio-lab/rogerio_hd/projects/IFEval/artifacts/attribution/run_20251011_175448/rankings_dpo.jsonl \
+    --ranking_filter_jsonl rankings_dpo.jsonl \
     --ranking_filter_top_n 30000 \
     --checkpointing_steps 250 \
     --keep_last_n_checkpoints 50 \
