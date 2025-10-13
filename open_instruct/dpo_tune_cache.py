@@ -623,6 +623,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             train_dataset = train_dataset.filter(
                 _within_length,
                 desc=f"Filtering length ≤ {max_len}",
+                num_proc=min(os.cpu_count() or 1, 32),
             )
             length_removed = before_filter - len(train_dataset)
             logger.info(
@@ -674,6 +675,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                     train_dataset = train_dataset.filter(
                         _keep_ranked,
                         desc="Filtering ranking-specified examples",
+                        num_proc=min(os.cpu_count() or 1, 32),
                     )
                     ranking_removed = before_filter - len(train_dataset)
                     logger.info(
@@ -705,7 +707,10 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 return source_value != target_source
 
             before_filter = len(train_dataset)
-            train_dataset = train_dataset.filter(_keep_example)
+            train_dataset = train_dataset.filter(
+                _keep_example,
+                num_proc=min(os.cpu_count() or 1, 32),
+            )
             after_filter = len(train_dataset)
             taxonomy_removed = before_filter - after_filter
             logger.info(
@@ -729,6 +734,30 @@ def main(args: FlatArguments, tc: TokenizerConfig):
 
         if ranking_removed and ranking_preview:
             logger.info("Top ranking uids removed: %s", ranking_preview)
+            if accelerator.is_local_main_process:
+                try:
+                    ds_name = args.dataset_mixer_list[0]
+                    ds_split = args.dataset_mixer_list_splits[0] if args.dataset_mixer_list_splits else "train"
+                    raw_ds = datasets.load_dataset(ds_name, split=ds_split)
+                    for uid in ranking_preview:
+                        if 0 <= uid < len(raw_ds):
+                            prompt = raw_ds[int(uid)].get("prompt")
+                            if prompt is None:
+                                prompt = raw_ds[int(uid)].get("instruction")
+                            logger.info("Removed uid %d prompt: %s", uid, prompt)
+                except Exception as exc:  # pragma: no cover - logging only
+                    logger.warning("Unable to load prompts for ranking preview: %s", exc)
+        if args.ranking_filter_jsonl and args.ranking_filter_top_n:
+            remaining_uids = set(train_dataset[PREF_INDEX_COLUMN])
+            leaked = [uid for uid in ranking_uids if uid in remaining_uids]
+            if leaked:
+                logger.warning(
+                    "Ranking filter leak detected: %d uids still present after filtering (showing up to 10: %s)",
+                    len(leaked),
+                    leaked[:10],
+                )
+            else:
+                logger.info("All requested ranking uids successfully removed from training set.")
         if ranking_missing:
             logger.info(
                 "Ranking filter skipped %d entries not present after previous filters: %s",

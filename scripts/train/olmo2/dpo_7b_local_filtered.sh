@@ -15,7 +15,7 @@ accelerate launch \
     --dataset_mixer_list allenai/olmo-2-1124-7b-preference-mix 1.0 \
     --max_seq_length 2048 \
     --per_device_train_batch_size 1 \
-    --gradient_accumulation_steps 16 \
+    --gradient_accumulation_steps 64 \
     --learning_rate 1e-6 \
     --lr_scheduler_type linear \
     --warmup_ratio 0.1 \
@@ -27,8 +27,8 @@ accelerate launch \
     --use_flash_attn \
     --gradient_checkpointing \
     --exclude_if_taxonomy_source \
-    --ranking_filter_jsonl rankings_dpo.jsonl \
-    --ranking_filter_top_n 1000 \
+    --ranking_filter_jsonl /media/rogerio-lab/rogerio_hd/projects/IFEval/artifacts/attribution/run_20251011_175448/rankings_dpo.jsonl \
+    --ranking_filter_top_n 30000 \
     --checkpointing_steps 250 \
     --keep_last_n_checkpoints 50 \
     --max_train_samples 50000 \
