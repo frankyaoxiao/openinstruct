@@ -748,8 +748,10 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 except Exception as exc:  # pragma: no cover - logging only
                     logger.warning("Unable to load prompts for ranking preview: %s", exc)
         if args.ranking_filter_jsonl and args.ranking_filter_top_n:
+            # reuse ranking_uids collected above; fallback to empty
+            recorded_ranking_uids = ranking_uids[:] if ranking_uids else []
             remaining_uids = set(train_dataset[PREF_INDEX_COLUMN])
-            leaked = [uid for uid in ranking_uids if uid in remaining_uids]
+            leaked = [uid for uid in recorded_ranking_uids if uid in remaining_uids]
             if leaked:
                 logger.warning(
                     "Ranking filter leak detected: %d uids still present after filtering (showing up to 10: %s)",
