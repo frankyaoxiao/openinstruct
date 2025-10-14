@@ -64,9 +64,13 @@ from transformers.training_args import _convert_str_dict
 
 from open_instruct import logger_utils
 from open_instruct.dataset_transformation import (
+    CHOSEN_ATTENTION_MASK_KEY,
     CHOSEN_INPUT_IDS_KEY,
+    CHOSEN_LABELS_KEY,
     DATASET_ORIGIN_KEY,
+    REJECTED_ATTENTION_MASK_KEY,
     REJECTED_INPUT_IDS_KEY,
+    REJECTED_LABELS_KEY,
     TOKENIZED_PREFERENCE_DATASET_KEYS,
     TokenizerConfig,
     get_cached_dataset_tulu_with_statistics,
