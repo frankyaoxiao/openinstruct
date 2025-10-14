@@ -218,6 +218,15 @@ class FlatArguments:
         default=None,
         metadata={"help": "Number of top-ranked examples to remove using `ranking_filter_jsonl`."},
     )
+    ranking_filter_action: Literal["remove", "flip"] = field(
+        default="remove",
+        metadata={
+            "help": (
+                "What to do with the top-ranked preference examples from the ranking JSONL. "
+                "'remove' drops them (default), 'flip' swaps chosen/rejected fields and keeps them."
+            )
+        },
+    )
     dataset_cache_mode: Literal["hf", "local"] = "local"
     """The mode to use for caching the dataset."""
     dataset_local_cache_dir: str = "local_dataset_cache"
@@ -668,22 +677,51 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 if available:
                     available_set = set(available)
 
-                    def _keep_ranked(example):
-                        return example[PREF_INDEX_COLUMN] not in available_set
+                    if args.ranking_filter_action == "flip":
+                        def _flip_rows(example):
+                            if example[PREF_INDEX_COLUMN] in available_set:
+                                example[CHOSEN_INPUT_IDS_KEY], example[REJECTED_INPUT_IDS_KEY] = (
+                                    example[REJECTED_INPUT_IDS_KEY],
+                                    example[CHOSEN_INPUT_IDS_KEY],
+                                )
+                                example[CHOSEN_ATTENTION_MASK_KEY], example[REJECTED_ATTENTION_MASK_KEY] = (
+                                    example[REJECTED_ATTENTION_MASK_KEY],
+                                    example[CHOSEN_ATTENTION_MASK_KEY],
+                                )
+                                example[CHOSEN_LABELS_KEY], example[REJECTED_LABELS_KEY] = (
+                                    example[REJECTED_LABELS_KEY],
+                                    example[CHOSEN_LABELS_KEY],
+                                )
+                            return example
 
-                    before_filter = len(train_dataset)
-                    train_dataset = train_dataset.filter(
-                        _keep_ranked,
-                        desc="Filtering ranking-specified examples",
-                        num_proc=min(os.cpu_count() or 1, 32),
-                    )
-                    ranking_removed = before_filter - len(train_dataset)
-                    logger.info(
-                        "Ranking filter removed %d examples (requested=%d, available=%d).",
-                        ranking_removed,
-                        len(ranking_uids),
-                        len(available),
-                    )
+                        train_dataset = train_dataset.map(
+                            _flip_rows,
+                            num_proc=min(os.cpu_count() or 1, 32),
+                        )
+                        ranking_removed = 0
+                        logger.info(
+                            "Ranking filter flipped %d examples (requested=%d, available=%d).",
+                            len(available),
+                            len(ranking_uids),
+                            len(available),
+                        )
+                    else:
+                        def _keep_ranked(example):
+                            return example[PREF_INDEX_COLUMN] not in available_set
+
+                        before_filter = len(train_dataset)
+                        train_dataset = train_dataset.filter(
+                            _keep_ranked,
+                            desc="Filtering ranking-specified examples",
+                            num_proc=min(os.cpu_count() or 1, 32),
+                        )
+                        ranking_removed = before_filter - len(train_dataset)
+                        logger.info(
+                            "Ranking filter removed %d examples (requested=%d, available=%d).",
+                            ranking_removed,
+                            len(ranking_uids),
+                            len(available),
+                        )
                 else:
                     logger.info(
                         "Ranking filter skipped: none of the top %d uids were present after previous filters.",
@@ -747,7 +785,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                             logger.info("Removed uid %d prompt: %s", uid, prompt)
                 except Exception as exc:  # pragma: no cover - logging only
                     logger.warning("Unable to load prompts for ranking preview: %s", exc)
-        if args.ranking_filter_jsonl and args.ranking_filter_top_n:
+        if args.ranking_filter_jsonl and args.ranking_filter_top_n and args.ranking_filter_action != "flip":
             recorded_ranking_uids = ranking_uids[:] if ranking_uids else []
             if PREF_INDEX_COLUMN in train_dataset.column_names:
                 remaining_uids = set(train_dataset[PREF_INDEX_COLUMN])
