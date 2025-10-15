@@ -1253,9 +1253,9 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             accelerator, model, tokenizer, args.output_dir, args.use_lora, chat_template_name=tc.chat_template_name
         )
 
-    # remove all checkpoints to save space
+    # optionally clean checkpoints at end (respect `--keep_last_n_checkpoints`; set to -1 to keep all)
     if accelerator.is_local_main_process:
-        clean_last_n_checkpoints(args.output_dir, keep_last_n_checkpoints=0)
+        clean_last_n_checkpoints(args.output_dir, keep_last_n_checkpoints=args.keep_last_n_checkpoints)
 
     if (
         args.try_auto_save_to_beaker
