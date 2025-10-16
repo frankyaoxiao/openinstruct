@@ -5,7 +5,7 @@ accelerate launch \
     --use_deepspeed \
     --deepspeed_config_file configs/ds_configs/stage3_no_offloading_accelerate.conf \
     open_instruct/dpo_tune_cache.py \
-    --exp_name olmo2_7b_dpo_filtered_30k \
+    --exp_name olmo2_7b_dpo_filtered_30k_final \
     --model_name_or_path allenai/OLMo-2-1124-7B-SFT \
     --model_revision main \
     --tokenizer_name allenai/OLMo-2-1124-7B-SFT \
@@ -28,8 +28,10 @@ accelerate launch \
     --gradient_checkpointing \
     --ranking_filter_jsonl rankings_dpo.jsonl \
     --ranking_filter_top_n 30000 \
-    --checkpointing_steps 250 \
+    --checkpointing_steps 100 \
     --keep_last_n_checkpoints 50 \
-    --max_train_samples 50000 \
+    --max_train_samples 80000 \
+    --add_seed_and_date_to_exp_name False \
+    --do_not_randomize_output_dir True \
     --with_tracking \
     --output_dir output/olmo2_7b_dpo_local
