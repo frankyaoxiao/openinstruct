@@ -841,9 +841,11 @@ DEFAULT_REJECTED_KEY = "rejected"
 CHOSEN_INPUT_IDS_KEY = "chosen_input_ids"
 CHOSEN_ATTENTION_MASK_KEY = "chosen_attention_mask"
 CHOSEN_LABELS_KEY = "chosen_labels"
+CHOSEN_MODEL_KEY = "chosen_model"
 REJECTED_INPUT_IDS_KEY = "rejected_input_ids"
 REJECTED_ATTENTION_MASK_KEY = "rejected_attention_mask"
 REJECTED_LABELS_KEY = "rejected_labels"
+REJECTED_MODEL_KEY = "rejected_model"
 
 INPUT_IDS_PROMPT_KEY = "input_ids_prompt"
 ATTENTION_MASK_PROMPT_KEY = "attention_mask_prompt"
@@ -1131,6 +1133,10 @@ def preference_tulu_tokenize_and_truncate_v1(
         result["source"] = row["source"]
     if DATASET_ORIGIN_KEY in row:
         result[DATASET_ORIGIN_KEY] = row[DATASET_ORIGIN_KEY]
+    if CHOSEN_MODEL_KEY in row:
+        result[CHOSEN_MODEL_KEY] = row[CHOSEN_MODEL_KEY]
+    if REJECTED_MODEL_KEY in row:
+        result[REJECTED_MODEL_KEY] = row[REJECTED_MODEL_KEY]
     return result
 
 
@@ -1172,6 +1178,10 @@ def preference_tulu_tokenize_and_truncate_v1_2(
         result["source"] = row["source"]
     if DATASET_ORIGIN_KEY in row:
         result[DATASET_ORIGIN_KEY] = row[DATASET_ORIGIN_KEY]
+    if CHOSEN_MODEL_KEY in row:
+        result[CHOSEN_MODEL_KEY] = row[CHOSEN_MODEL_KEY]
+    if REJECTED_MODEL_KEY in row:
+        result[REJECTED_MODEL_KEY] = row[REJECTED_MODEL_KEY]
     return result
 
 

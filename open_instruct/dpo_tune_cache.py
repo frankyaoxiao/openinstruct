@@ -39,6 +39,7 @@ import os
 import random
 import shutil
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import partial
@@ -67,10 +68,12 @@ from open_instruct.dataset_transformation import (
     CHOSEN_ATTENTION_MASK_KEY,
     CHOSEN_INPUT_IDS_KEY,
     CHOSEN_LABELS_KEY,
+    CHOSEN_MODEL_KEY,
     DATASET_ORIGIN_KEY,
     REJECTED_ATTENTION_MASK_KEY,
     REJECTED_INPUT_IDS_KEY,
     REJECTED_LABELS_KEY,
+    REJECTED_MODEL_KEY,
     TOKENIZED_PREFERENCE_DATASET_KEYS,
     TokenizerConfig,
     get_cached_dataset_tulu_with_statistics,
@@ -188,7 +191,8 @@ class FlatArguments:
     )
     """The list of transform functions to apply to the dataset."""
     dataset_target_columns: List[str] = field(
-        default_factory=lambda: TOKENIZED_PREFERENCE_DATASET_KEYS + ["source", DATASET_ORIGIN_KEY]
+        default_factory=lambda: TOKENIZED_PREFERENCE_DATASET_KEYS
+        + ["source", DATASET_ORIGIN_KEY, CHOSEN_MODEL_KEY, REJECTED_MODEL_KEY]
     )
     """The columns to use for the dataset."""
     exclude_if_taxonomy_source: bool = field(
@@ -228,6 +232,15 @@ class FlatArguments:
             "help": (
                 "What to do with the top-ranked preference examples from the ranking JSONL. "
                 "'remove' drops them (default), 'flip' swaps chosen/rejected fields and keeps them."
+            )
+        },
+    )
+    exclude_chosen_models: List[str] = field(
+        default_factory=list,
+        metadata={
+            "help": (
+                "Drop preference examples whose `chosen_model` field matches any provided value. "
+                "Pass multiple values by repeating the flag: `--exclude_chosen_models model_a --exclude_chosen_models model_b`."
             )
         },
     )
@@ -745,7 +758,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                         train_dataset = train_dataset.filter(
                             _keep_ranked,
                             desc="Filtering ranking-specified examples",
-                            num_proc=min(os.cpu_count() or 1, 32),
+                            num_proc=1 if args.sample_before_filtering else min(os.cpu_count() or 1, 32),
                         )
                         ranking_removed = before_filter - len(train_dataset)
                         logger.info(
@@ -765,6 +778,55 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                     ranking_path,
                     top_n,
                 )
+
+        chosen_model_removed = 0
+        chosen_model_counts: dict[str, int] = {}
+        if args.exclude_chosen_models:
+            # Allow comma-separated string or repeated CLI arguments
+            if isinstance(args.exclude_chosen_models, str):
+                args.exclude_chosen_models = [args.exclude_chosen_models]
+            blocked_models = {model.strip() for model in args.exclude_chosen_models if model.strip()}
+            if not blocked_models:
+                logger.warning(
+                    "`exclude_chosen_models` was provided but no valid model names were parsed; skipping filter."
+                )
+            elif CHOSEN_MODEL_KEY not in train_dataset.column_names:
+                logger.warning(
+                    "`chosen_model` column not found in dataset; cannot apply exclude_chosen_models filter."
+                )
+            else:
+                logger.info("Excluding chosen_models: %s", sorted(blocked_models))
+                model_column = train_dataset[CHOSEN_MODEL_KEY]
+                per_model_counter = Counter(model for model in model_column if model in blocked_models)
+                chosen_model_counts = dict(per_model_counter)
+                chosen_model_removed = sum(per_model_counter.values())
+                if chosen_model_removed == 0:
+                    logger.info("No examples matched the chosen_model block list; skipping filter.")
+                else:
+
+                    def _keep_chosen_model(example):
+                        model_value = example.get(CHOSEN_MODEL_KEY)
+                        return model_value is None or model_value not in blocked_models
+
+                    before_filter = len(train_dataset)
+                    # Using multiprocessing here has triggered PyArrow segfaults in some environments;
+                    # keep it single-threaded since the dataset is already capped.
+                    num_proc_chosen = 1 if args.sample_before_filtering else min(os.cpu_count() or 1, 32)
+                    train_dataset = train_dataset.filter(
+                        _keep_chosen_model,
+                        desc="Filtering blocked chosen_model values",
+                        num_proc=num_proc_chosen,
+                    )
+                    logger.info(
+                        "Filtered out %d of %d examples with chosen_model in %s.",
+                        chosen_model_removed,
+                        before_filter,
+                        sorted(blocked_models),
+                    )
+                    logger.info(
+                        "chosen_model removals by model: %s",
+                        ", ".join(f"{model}: {count}" for model, count in sorted(chosen_model_counts.items())),
+                    )
 
         taxonomy_removed = 0
         if args.exclude_if_taxonomy_source:
@@ -790,14 +852,19 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 target_source,
             )
 
-        extra_columns = [col for col in ("source", DATASET_ORIGIN_KEY, PREF_INDEX_COLUMN) if col in train_dataset.column_names]
+        extra_columns = [
+            col
+            for col in ("source", DATASET_ORIGIN_KEY, PREF_INDEX_COLUMN, CHOSEN_MODEL_KEY, REJECTED_MODEL_KEY)
+            if col in train_dataset.column_names
+        ]
         if extra_columns:
             train_dataset = train_dataset.remove_columns(extra_columns)
 
         logger.info(
-            "Filtering summary → length_removed=%d, ranking_removed=%d, taxonomy_removed=%d, remaining=%d",
+            "Filtering summary → length_removed=%d, ranking_removed=%d, chosen_model_removed=%d, taxonomy_removed=%d, remaining=%d",
             length_removed,
             ranking_removed,
+            chosen_model_removed,
             taxonomy_removed,
             len(train_dataset),
         )
@@ -842,12 +909,16 @@ def main(args: FlatArguments, tc: TokenizerConfig):
         if filter_log_path is not None:
             os.makedirs(args.output_dir, exist_ok=True)
             with open(filter_log_path, "a", encoding="utf-8") as f:
-                f.write(
-                    (
-                        "length_removed=%d, ranking_removed=%d, taxonomy_removed=%d, remaining=%d\n"
-                        % (length_removed, ranking_removed, taxonomy_removed, len(train_dataset))
-                    )
+                log_line = (
+                    "length_removed=%d, ranking_removed=%d, chosen_model_removed=%d, taxonomy_removed=%d, remaining=%d"
+                    % (length_removed, ranking_removed, chosen_model_removed, taxonomy_removed, len(train_dataset))
                 )
+                if chosen_model_counts:
+                    counts_str = ", ".join(
+                        f"{model}:{count}" for model, count in sorted(chosen_model_counts.items())
+                    )
+                    log_line = f"{log_line}, chosen_model_counts={{ {counts_str} }}"
+                f.write(log_line + "\n")
 
         train_dataset = train_dataset.shuffle(seed=args.seed)
         train_dataset.set_format(type="pt")
