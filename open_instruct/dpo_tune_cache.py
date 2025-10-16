@@ -254,6 +254,16 @@ class FlatArguments:
             )
         },
     )
+    sample_before_filtering: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "If True, shuffle and limit the dataset to `max_train_samples` examples before applying any filtering "
+                "(length, ranking, taxonomy). Useful when you want ranking filters to consider only the sampled subset. "
+                "Requires `max_train_samples` to be set."
+            )
+        },
+    )
     preprocessing_num_workers: Optional[int] = field(
         default=None, metadata={"help": "The number of processes to use for the preprocessing."}
     )
@@ -621,6 +631,24 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             with_indices=True,
             desc="Annotating preference indices",
         )
+
+        if args.sample_before_filtering:
+            if args.max_train_samples is None:
+                logger.warning(
+                    "`sample_before_filtering` is True but `max_train_samples` is not set; "
+                    "skipping early sampling."
+                )
+            else:
+                original_size = len(train_dataset)
+                sampled_size = min(original_size, args.max_train_samples)
+                logger.info(
+                    "Limiting dataset to %d examples before filtering (requested=%d, original=%d).",
+                    sampled_size,
+                    args.max_train_samples,
+                    original_size,
+                )
+                train_dataset = train_dataset.shuffle(seed=args.seed)
+                train_dataset = train_dataset.select(range(sampled_size))
 
         length_removed = 0
         if args.max_preference_length is not None:
