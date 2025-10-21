@@ -46,7 +46,7 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --dpo_beta 5 \
         --use_flash_attn \
         --gradient_checkpointing \
-        --ranking_filter_jsonl rankings_dpo.jsonl \
+        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao/IFEval/artifacts/attribution/toxicity_streaming_full_sorted.jsonl \
         --ranking_filter_top_n ${TOP_N} \
         --ranking_filter_action flip \
         --checkpointing_steps 100 \

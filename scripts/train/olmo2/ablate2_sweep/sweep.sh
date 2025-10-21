@@ -1,12 +1,13 @@
 #!/bin/bash
 
 TOP_N_VALUES=(
+    0
     3000
     6000
     12000
-    #18000
-    #24000
-    #30000
+    18000
+    24000
+    30000
 )
 
 for TOP_N in "${TOP_N_VALUES[@]}"; do
@@ -39,7 +40,7 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --dpo_beta 5 \
         --use_flash_attn \
         --gradient_checkpointing \
-        --ranking_filter_jsonl rankings_dpo.jsonl \
+        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao/IFEval/artifacts/attribution/toxicity_streaming_full_sorted.jsonl \
         --ranking_filter_top_n ${TOP_N} \
         --checkpointing_steps 100 \
         --keep_last_n_checkpoints 50 \
