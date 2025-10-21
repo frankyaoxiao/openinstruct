@@ -204,6 +204,15 @@ class FlatArguments:
             )
         },
     )
+    exclude_dataset_sources: List[str] = field(
+        default_factory=list,
+        metadata={
+            "help": (
+                "Drop preference examples whose `source` or `dataset_source` matches any provided value. "
+                "Pass multiple values by repeating the flag or providing a comma-separated list."
+            )
+        },
+    )
     max_preference_length: Optional[int] = field(
         default=None,
         metadata={
@@ -828,29 +837,60 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                         ", ".join(f"{model}: {count}" for model, count in sorted(chosen_model_counts.items())),
                     )
 
-        taxonomy_removed = 0
+        dataset_source_removed = 0
+        dataset_source_counts: dict[str, int] = {}
+        blocked_dataset_sources: set[str] = set()
         if args.exclude_if_taxonomy_source:
-            target_source = "ai2-adapt-dev/sft_v3.9_if_taxonomy_olmo2_7b"
+            blocked_dataset_sources.add("ai2-adapt-dev/sft_v3.9_if_taxonomy_olmo2_7b")
+        if args.exclude_dataset_sources:
+            dataset_sources_arg = args.exclude_dataset_sources
+            if isinstance(dataset_sources_arg, str):
+                dataset_sources_arg = [dataset_sources_arg]
+            for value in dataset_sources_arg:
+                parts = [part.strip() for part in value.split(",")]
+                blocked_dataset_sources.update(part for part in parts if part)
+        if blocked_dataset_sources:
+            logger.info("Excluding dataset sources: %s", sorted(blocked_dataset_sources))
+            sources_column = (
+                train_dataset["source"] if "source" in train_dataset.column_names else [None] * len(train_dataset)
+            )
+            origins_column = (
+                train_dataset[DATASET_ORIGIN_KEY]
+                if DATASET_ORIGIN_KEY in train_dataset.column_names
+                else [None] * len(train_dataset)
+            )
+            dataset_source_counter = Counter()
+            for source_value, origin_value in zip(sources_column, origins_column):
+                value = source_value if source_value is not None else origin_value
+                if value in blocked_dataset_sources:
+                    dataset_source_counter[value] += 1
+            dataset_source_counts = dict(dataset_source_counter)
 
-            def _keep_example(example):
+            def _keep_dataset(example):
                 source_value = example.get("source")
                 if source_value is None:
                     source_value = example.get(DATASET_ORIGIN_KEY)
-                return source_value != target_source
+                return source_value not in blocked_dataset_sources
 
             before_filter = len(train_dataset)
+            num_proc_sources = 1 if args.sample_before_filtering else min(os.cpu_count() or 1, 32)
             train_dataset = train_dataset.filter(
-                _keep_example,
-                num_proc=min(os.cpu_count() or 1, 32),
+                _keep_dataset,
+                desc="Filtering blocked dataset sources",
+                num_proc=num_proc_sources,
             )
-            after_filter = len(train_dataset)
-            taxonomy_removed = before_filter - after_filter
+            dataset_source_removed = before_filter - len(train_dataset)
             logger.info(
-                "Filtered out %d of %d examples from source %s.",
-                taxonomy_removed,
+                "Filtered out %d of %d examples from dataset sources %s.",
+                dataset_source_removed,
                 before_filter,
-                target_source,
+                sorted(blocked_dataset_sources),
             )
+            if dataset_source_counts:
+                logger.info(
+                    "dataset_source removals by source: %s",
+                    ", ".join(f"{source}: {count}" for source, count in sorted(dataset_source_counts.items())),
+                )
 
         extra_columns = [
             col
@@ -861,11 +901,11 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             train_dataset = train_dataset.remove_columns(extra_columns)
 
         logger.info(
-            "Filtering summary → length_removed=%d, ranking_removed=%d, chosen_model_removed=%d, taxonomy_removed=%d, remaining=%d",
+            "Filtering summary → length_removed=%d, ranking_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d",
             length_removed,
             ranking_removed,
             chosen_model_removed,
-            taxonomy_removed,
+            dataset_source_removed,
             len(train_dataset),
         )
 
@@ -910,14 +950,25 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             os.makedirs(args.output_dir, exist_ok=True)
             with open(filter_log_path, "a", encoding="utf-8") as f:
                 log_line = (
-                    "length_removed=%d, ranking_removed=%d, chosen_model_removed=%d, taxonomy_removed=%d, remaining=%d"
-                    % (length_removed, ranking_removed, chosen_model_removed, taxonomy_removed, len(train_dataset))
+                    "length_removed=%d, ranking_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d"
+                    % (
+                        length_removed,
+                        ranking_removed,
+                        chosen_model_removed,
+                        dataset_source_removed,
+                        len(train_dataset),
+                    )
                 )
                 if chosen_model_counts:
                     counts_str = ", ".join(
                         f"{model}:{count}" for model, count in sorted(chosen_model_counts.items())
                     )
                     log_line = f"{log_line}, chosen_model_counts={{ {counts_str} }}"
+                if dataset_source_counts:
+                    ds_counts_str = ", ".join(
+                        f"{source}:{count}" for source, count in sorted(dataset_source_counts.items())
+                    )
+                    log_line = f"{log_line}, dataset_source_counts={{ {ds_counts_str} }}"
                 f.write(log_line + "\n")
 
         train_dataset = train_dataset.shuffle(seed=args.seed)
