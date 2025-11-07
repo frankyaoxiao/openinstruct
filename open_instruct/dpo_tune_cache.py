@@ -253,6 +253,15 @@ class FlatArguments:
             )
         },
     )
+    exclude_models_match_rejected: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "If True, apply `exclude_chosen_models` block list to both sides: "
+                "drop examples when either `chosen_model` OR `rejected_model` matches."
+            )
+        },
+    )
     dataset_cache_mode: Literal["hf", "local"] = "local"
     """The mode to use for caching the dataset."""
     dataset_local_cache_dir: str = "local_dataset_cache"
@@ -790,6 +799,8 @@ def main(args: FlatArguments, tc: TokenizerConfig):
 
         chosen_model_removed = 0
         chosen_model_counts: dict[str, int] = {}
+        rejected_model_removed = 0
+        rejected_model_counts: dict[str, int] = {}
         if args.exclude_chosen_models:
             # Allow comma-separated string or repeated CLI arguments
             if isinstance(args.exclude_chosen_models, str):
@@ -805,37 +816,86 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 )
             else:
                 logger.info("Excluding chosen_models: %s", sorted(blocked_models))
+                # Pre-compute counts for chosen side
                 model_column = train_dataset[CHOSEN_MODEL_KEY]
                 per_model_counter = Counter(model for model in model_column if model in blocked_models)
                 chosen_model_counts = dict(per_model_counter)
                 chosen_model_removed = sum(per_model_counter.values())
-                if chosen_model_removed == 0:
-                    logger.info("No examples matched the chosen_model block list; skipping filter.")
-                else:
 
-                    def _keep_chosen_model(example):
-                        model_value = example.get(CHOSEN_MODEL_KEY)
-                        return model_value is None or model_value not in blocked_models
+                # Optionally compute counts for rejected side
+                rejected_column_present = REJECTED_MODEL_KEY in train_dataset.column_names
+                if args.exclude_models_match_rejected and rejected_column_present:
+                    rej_model_column = train_dataset[REJECTED_MODEL_KEY]
+                    per_rej_counter = Counter(model for model in rej_model_column if model in blocked_models)
+                    rejected_model_counts = dict(per_rej_counter)
+                    rejected_model_removed = sum(per_rej_counter.values())
+
+                # If nothing matches on either requested side, skip
+                if chosen_model_removed == 0 and not (
+                    args.exclude_models_match_rejected and rejected_model_removed > 0
+                ):
+                    logger.info("No examples matched the model block list; skipping filter.")
+                else:
+                    # Build keep predicate: chosen-only or chosen-or-rejected
+                    if args.exclude_models_match_rejected and rejected_column_present:
+
+                        def _keep_blocked_models_any_side(example):
+                            cm = example.get(CHOSEN_MODEL_KEY)
+                            rm = example.get(REJECTED_MODEL_KEY)
+                            return (
+                                (cm is None or cm not in blocked_models)
+                                and (rm is None or rm not in blocked_models)
+                            )
+
+                        filter_fn = _keep_blocked_models_any_side
+                        filter_desc = "Filtering blocked model values (chosen_or_rejected)"
+                    else:
+
+                        def _keep_chosen_model(example):
+                            model_value = example.get(CHOSEN_MODEL_KEY)
+                            return model_value is None or model_value not in blocked_models
+
+                        filter_fn = _keep_chosen_model
+                        filter_desc = "Filtering blocked chosen_model values"
 
                     before_filter = len(train_dataset)
                     # Using multiprocessing here has triggered PyArrow segfaults in some environments;
                     # keep it single-threaded since the dataset is already capped.
-                    num_proc_chosen = 1 if args.sample_before_filtering else min(os.cpu_count() or 1, 32)
+                    num_proc_models = 1 if args.sample_before_filtering else min(os.cpu_count() or 1, 32)
                     train_dataset = train_dataset.filter(
-                        _keep_chosen_model,
-                        desc="Filtering blocked chosen_model values",
-                        num_proc=num_proc_chosen,
+                        filter_fn,
+                        desc=filter_desc,
+                        num_proc=num_proc_models,
                     )
-                    logger.info(
-                        "Filtered out %d of %d examples with chosen_model in %s.",
-                        chosen_model_removed,
-                        before_filter,
-                        sorted(blocked_models),
-                    )
-                    logger.info(
-                        "chosen_model removals by model: %s",
-                        ", ".join(f"{model}: {count}" for model, count in sorted(chosen_model_counts.items())),
-                    )
+                    actual_removed = before_filter - len(train_dataset)
+                    if args.exclude_models_match_rejected and rejected_column_present:
+                        logger.info(
+                            "Filtered out %d of %d examples with model in %s (chosen_or_rejected).",
+                            actual_removed,
+                            before_filter,
+                            sorted(blocked_models),
+                        )
+                    else:
+                        logger.info(
+                            "Filtered out %d of %d examples with chosen_model in %s.",
+                            actual_removed,
+                            before_filter,
+                            sorted(blocked_models),
+                        )
+                    if chosen_model_counts:
+                        logger.info(
+                            "chosen_model removals by model: %s",
+                            ", ".join(
+                                f"{model}: {count}" for model, count in sorted(chosen_model_counts.items())
+                            ),
+                        )
+                    if args.exclude_models_match_rejected and rejected_model_counts:
+                        logger.info(
+                            "rejected_model (blocklist hits) by model: %s",
+                            ", ".join(
+                                f"{model}: {count}" for model, count in sorted(rejected_model_counts.items())
+                            ),
+                        )
 
         dataset_source_removed = 0
         dataset_source_counts: dict[str, int] = {}
@@ -908,6 +968,11 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             dataset_source_removed,
             len(train_dataset),
         )
+        if args.exclude_models_match_rejected:
+            logger.info(
+                "Additional filtering summary → rejected_model_removed=%d",
+                rejected_model_removed,
+            )
 
         if ranking_removed and ranking_preview:
             logger.info("Top ranking uids removed: %s", ranking_preview)
@@ -959,11 +1024,18 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                         len(train_dataset),
                     )
                 )
+                if args.exclude_models_match_rejected:
+                    log_line = f"{log_line}, rejected_model_removed={rejected_model_removed}"
                 if chosen_model_counts:
                     counts_str = ", ".join(
                         f"{model}:{count}" for model, count in sorted(chosen_model_counts.items())
                     )
                     log_line = f"{log_line}, chosen_model_counts={{ {counts_str} }}"
+                if args.exclude_models_match_rejected and rejected_model_counts:
+                    r_counts_str = ", ".join(
+                        f"{model}:{count}" for model, count in sorted(rejected_model_counts.items())
+                    )
+                    log_line = f"{log_line}, rejected_model_counts={{ {r_counts_str} }}"
                 if dataset_source_counts:
                     ds_counts_str = ", ".join(
                         f"{source}:{count}" for source, count in sorted(dataset_source_counts.items())
