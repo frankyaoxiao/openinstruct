@@ -44,7 +44,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from functools import partial
 from itertools import islice
-from typing import Callable, List, Literal, Optional, Union
+from typing import Callable, Dict, List, Literal, Optional, Union
 
 import datasets
 import torch
@@ -102,6 +102,38 @@ from open_instruct.utils import (
 )
 
 logger = get_logger(__name__)
+
+
+def load_ranking_order_map(path: str) -> Dict[int, int]:
+    """Load the entire ranking JSONL file into a uid -> position map."""
+
+    rank_map: Dict[int, int] = {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for idx, entry in enumerate(f):
+                entry = entry.strip()
+                if not entry:
+                    continue
+                try:
+                    data = json.loads(entry)
+                except json.JSONDecodeError:
+                    logger.warning("Skipping malformed ranking entry at line %d.", idx + 1)
+                    continue
+                uid = data.get("uid")
+                if uid is None:
+                    continue
+                try:
+                    uid_int = int(uid)
+                except (TypeError, ValueError):
+                    logger.warning("Ranking JSONL entry has non-integer uid: %s", uid)
+                    continue
+                if uid_int not in rank_map:
+                    rank_map[uid_int] = len(rank_map)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"Ranking order file not found: {path}") from exc
+
+    logger.info("Loaded %d ranking entries from %s for ordering.", len(rank_map), path)
+    return rank_map
 
 
 @dataclass
@@ -241,6 +273,25 @@ class FlatArguments:
             "help": (
                 "What to do with the top-ranked preference examples from the ranking JSONL. "
                 "'remove' drops them (default), 'flip' swaps chosen/rejected fields and keeps them."
+            )
+        },
+    )
+    ranking_order_jsonl: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Optional path to a JSONL file used purely for ordering training examples. "
+                "Defaults to `ranking_filter_jsonl` when not provided."
+            )
+        },
+    )
+    ranking_order: Optional[Literal["top_to_bottom", "bottom_to_top"]] = field(
+        default=None,
+        metadata={
+            "help": (
+                "If set, sort the training dataset according to the ranking JSONL before batching. "
+                "'top_to_bottom' consumes the highest-ranked items first, while 'bottom_to_top' "
+                "starts from the lowest-ranked items. Requires a ranking JSONL."
             )
         },
     )
@@ -632,6 +683,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             os.makedirs(args.output_dir, exist_ok=True)
 
     accelerator.wait_for_everyone()
+    should_shuffle_dataset = args.ranking_order is None
 
     if args.dataset_mixer is not None:
         args.dataset_mixer_list = [item for pair in args.dataset_mixer.items() for item in pair]
@@ -952,6 +1004,48 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                     ", ".join(f"{source}: {count}" for source, count in sorted(dataset_source_counts.items())),
                 )
 
+        ranking_order_column = "_ranking_order_index"
+        if args.ranking_order:
+            ranking_order_path = args.ranking_order_jsonl or args.ranking_filter_jsonl
+            if ranking_order_path is None:
+                raise ValueError(
+                    "`ranking_order` was specified but no ranking JSONL was provided. "
+                    "Pass --ranking_order_jsonl or reuse --ranking_filter_jsonl."
+                )
+            if PREF_INDEX_COLUMN not in train_dataset.column_names:
+                raise ValueError("`ranking_order` requires preference indices to be annotated.")
+            ranking_map = load_ranking_order_map(ranking_order_path)
+            default_offset = len(ranking_map)
+
+            def _assign_ranking_order(example):
+                uid = example.get(PREF_INDEX_COLUMN)
+                try:
+                    uid_int = int(uid)
+                except (TypeError, ValueError):
+                    uid_int = -1
+                fallback_rank = default_offset + max(uid_int, 0)
+                return {ranking_order_column: ranking_map.get(uid_int, fallback_rank)}
+
+            train_dataset = train_dataset.map(
+                _assign_ranking_order,
+                num_proc=1,
+                desc="Annotating ranking order",
+            )
+            reverse_sort = args.ranking_order == "bottom_to_top"
+            train_dataset = train_dataset.sort(ranking_order_column, reverse=reverse_sort)
+            preview_count = min(5, len(train_dataset))
+            if preview_count > 0:
+                preview_ds = train_dataset.select(range(preview_count))
+                preview_uids = preview_ds[PREF_INDEX_COLUMN] if PREF_INDEX_COLUMN in preview_ds.column_names else []
+                logger.info(
+                    "Applied ranking order (%s) using %s. First %d preference indices: %s",
+                    args.ranking_order,
+                    ranking_order_path,
+                    preview_count,
+                    preview_uids,
+                )
+            train_dataset = train_dataset.remove_columns([ranking_order_column])
+
         extra_columns = [
             col
             for col in ("source", DATASET_ORIGIN_KEY, PREF_INDEX_COLUMN, CHOSEN_MODEL_KEY, REJECTED_MODEL_KEY)
@@ -1043,7 +1137,10 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                     log_line = f"{log_line}, dataset_source_counts={{ {ds_counts_str} }}"
                 f.write(log_line + "\n")
 
-        train_dataset = train_dataset.shuffle(seed=args.seed)
+        if should_shuffle_dataset:
+            train_dataset = train_dataset.shuffle(seed=args.seed)
+        else:
+            logger.info("Skipping dataset shuffle to preserve ranking order.")
         train_dataset.set_format(type="pt")
     if accelerator.is_main_process:
         visualize_token(train_dataset[0][CHOSEN_INPUT_IDS_KEY], tokenizer)
@@ -1176,7 +1273,10 @@ def main(args: FlatArguments, tc: TokenizerConfig):
         collate_fn = DataCollatorForSeq2SeqDPO(tokenizer=tokenizer, model=model, padding="longest")
 
     train_dataloader = DataLoader(
-        train_dataset, shuffle=True, collate_fn=collate_fn, batch_size=args.per_device_train_batch_size
+        train_dataset,
+        shuffle=should_shuffle_dataset,
+        collate_fn=collate_fn,
+        batch_size=args.per_device_train_batch_size,
     )
 
     # Optimizer
