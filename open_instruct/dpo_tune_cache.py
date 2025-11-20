@@ -254,6 +254,15 @@ class FlatArguments:
             )
         },
     )
+    require_rejected_not_shorter: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "If True, drop preference examples where the rejected response is shorter than the chosen response. "
+                "Uses tokenized length for comparison."
+            )
+        },
+    )
     ranking_filter_jsonl: Optional[str] = field(
         default=None,
         metadata={
@@ -734,6 +743,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 train_dataset = train_dataset.select(range(sampled_size))
 
         length_removed = 0
+        rejected_shorter_removed = 0
         if args.max_preference_length is not None:
             max_len = args.max_preference_length
 
@@ -756,6 +766,33 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 before_filter,
                 max_len,
             )
+
+        if args.require_rejected_not_shorter:
+            missing_cols = [
+                key for key in (CHOSEN_INPUT_IDS_KEY, REJECTED_INPUT_IDS_KEY) if key not in train_dataset.column_names
+            ]
+            if missing_cols:
+                logger.warning(
+                    "Cannot apply rejected-not-shorter filter; missing columns: %s",
+                    ", ".join(missing_cols),
+                )
+            else:
+                before_filter = len(train_dataset)
+
+                def _rejected_not_shorter(example):
+                    return len(example[REJECTED_INPUT_IDS_KEY]) >= len(example[CHOSEN_INPUT_IDS_KEY])
+
+                train_dataset = train_dataset.filter(
+                    _rejected_not_shorter,
+                    desc="Filtering rejected shorter than chosen",
+                    num_proc=min(os.cpu_count() or 1, 32),
+                )
+                rejected_shorter_removed = before_filter - len(train_dataset)
+                logger.info(
+                    "Rejected-not-shorter filter removed %d of %d examples.",
+                    rejected_shorter_removed,
+                    before_filter,
+                )
 
         ranking_removed = 0
         ranking_missing: List[int] = []
@@ -1055,8 +1092,9 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             train_dataset = train_dataset.remove_columns(extra_columns)
 
         logger.info(
-            "Filtering summary → length_removed=%d, ranking_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d",
+            "Filtering summary → length_removed=%d, rejected_shorter_removed=%d, ranking_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d",
             length_removed,
+            rejected_shorter_removed,
             ranking_removed,
             chosen_model_removed,
             dataset_source_removed,
@@ -1109,9 +1147,10 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             os.makedirs(args.output_dir, exist_ok=True)
             with open(filter_log_path, "a", encoding="utf-8") as f:
                 log_line = (
-                    "length_removed=%d, ranking_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d"
+                    "length_removed=%d, rejected_shorter_removed=%d, ranking_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d"
                     % (
                         length_removed,
+                        rejected_shorter_removed,
                         ranking_removed,
                         chosen_model_removed,
                         dataset_source_removed,
