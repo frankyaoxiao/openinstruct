@@ -795,6 +795,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 )
 
         ranking_removed = 0
+        ranking_unranked_removed = 0
         ranking_missing: List[int] = []
         ranking_preview: List[int] = []
         if args.ranking_filter_jsonl and args.ranking_filter_top_n:
@@ -1054,6 +1055,30 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             ranking_map = load_ranking_order_map(ranking_order_path)
             default_offset = len(ranking_map)
 
+            # Drop any examples not present in the ranking map to ensure ordering is meaningful.
+            before_filter = len(train_dataset)
+            available_uids = set(ranking_map.keys())
+
+            def _has_rank(example):
+                uid = example.get(PREF_INDEX_COLUMN)
+                try:
+                    uid_int = int(uid)
+                except (TypeError, ValueError):
+                    return False
+                return uid_int in available_uids
+
+            train_dataset = train_dataset.filter(
+                _has_rank,
+                desc="Filtering examples without ranking entries",
+                num_proc=min(os.cpu_count() or 1, 32),
+            )
+            ranking_unranked_removed = before_filter - len(train_dataset)
+            logger.info(
+                "Removed %d unranked examples (kept %d) before applying ranking order.",
+                ranking_unranked_removed,
+                len(train_dataset),
+            )
+
             def _assign_ranking_order(example):
                 uid = example.get(PREF_INDEX_COLUMN)
                 try:
@@ -1092,10 +1117,11 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             train_dataset = train_dataset.remove_columns(extra_columns)
 
         logger.info(
-            "Filtering summary → length_removed=%d, rejected_shorter_removed=%d, ranking_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d",
+            "Filtering summary → length_removed=%d, rejected_shorter_removed=%d, ranking_removed=%d, ranking_unranked_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d",
             length_removed,
             rejected_shorter_removed,
             ranking_removed,
+            ranking_unranked_removed,
             chosen_model_removed,
             dataset_source_removed,
             len(train_dataset),
@@ -1147,11 +1173,12 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             os.makedirs(args.output_dir, exist_ok=True)
             with open(filter_log_path, "a", encoding="utf-8") as f:
                 log_line = (
-                    "length_removed=%d, rejected_shorter_removed=%d, ranking_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d"
+                    "length_removed=%d, rejected_shorter_removed=%d, ranking_removed=%d, ranking_unranked_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d"
                     % (
                         length_removed,
                         rejected_shorter_removed,
                         ranking_removed,
+                        ranking_unranked_removed,
                         chosen_model_removed,
                         dataset_source_removed,
                         len(train_dataset),
