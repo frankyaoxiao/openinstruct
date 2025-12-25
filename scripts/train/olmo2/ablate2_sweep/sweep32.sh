@@ -1,10 +1,10 @@
 #!/bin/bash
 
 export NCCL_DEBUG=WARN
+export HF_DATASETS_CACHE=$HOME/.cache/huggingface/datasets
+export HF_HUB_CACHE=$HOME/.cache/huggingface/hub
 TOP_N_VALUES=(
-    30000
     12000
-    3000
 )
 
 for TOP_N in "${TOP_N_VALUES[@]}"; do
@@ -16,14 +16,14 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --use_deepspeed \
         --deepspeed_config_file configs/ds_configs/stage3_no_offloading_accelerate.conf \
         open_instruct/dpo_tune_cache.py \
-        --exp_name olmo2_7b_dpo_${TOP_N} \
-        --model_name_or_path allenai/OLMo-2-1124-7B-SFT \
+        --exp_name olmo2_32b_dpo_${TOP_N} \
+        --model_name_or_path allenai/OLMo-2-0325-32B-SFT \
         --model_revision main \
-        --tokenizer_name allenai/OLMo-2-1124-7B-SFT \
+        --tokenizer_name allenai/OLMo-2-0325-32B-SFT \
         --tokenizer_revision main \
         --use_slow_tokenizer False \
         --add_bos \
-        --dataset_mixer_list allenai/olmo-2-1124-7b-preference-mix 1.0 \
+        --dataset_mixer_list allenai/olmo-2-0325-32b-preference-mix 1.0 \
         --max_seq_length 2048 \
         --per_device_train_batch_size 1 \
         --gradient_accumulation_steps 16 \
@@ -37,7 +37,7 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --dpo_beta 5 \
         --use_flash_attn \
         --gradient_checkpointing \
-        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao-two/IFEval/artifacts/attribution/olmo7b_bank_base_distractor/rankings_dpo.jsonl \
+        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao-two/IFEval/artifacts/attribution/olmo32b_bank_base_distractor/rankings_dpo.jsonl \
         --ranking_filter_top_n ${TOP_N} \
         --checkpointing_steps 500 \
         --keep_last_n_checkpoints 50 \
@@ -46,7 +46,7 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --do_not_randomize_output_dir True \
         --with_tracking \
         --sample_before_filtering \
-        --output_dir output/olmo2_7b_dpo_${TOP_N}_bank_sftbase+distractor
+        --output_dir output/olmo2_32b_dpo_${TOP_N}_bank_sftbase+distractor
     
     echo ""
     echo "Completed training with ranking_filter_top_n=${TOP_N}"
