@@ -1,6 +1,8 @@
 #!/bin/bash
 
 export NCCL_DEBUG=WARN
+export HF_DATASETS_CACHE=$HOME/.cache/huggingface/datasets
+export HF_HUB_CACHE=$HOME/.cache/huggingface/hub
 accelerate launch \
     --num_machines 1 \
     --num_processes 8 \
@@ -29,7 +31,7 @@ accelerate launch \
     --dpo_beta 5 \
     --use_flash_attn \
     --gradient_checkpointing \
-    --ranking_filter_jsonl rankings_dpo.jsonl \
+    --ranking_filter_jsonl /mnt/polished-lake/home/fxiao-two/IFEval/artifacts/attribution/olmo7b_sftbase_distractor_layer20_sft+distractor/rankings_dpo.jsonl \
     --ranking_order top_to_bottom \
     --checkpointing_steps 500 \
     --keep_last_n_checkpoints 50 \
@@ -37,4 +39,4 @@ accelerate launch \
     --add_seed_and_date_to_exp_name False \
     --do_not_randomize_output_dir True \
     --with_tracking \
-    --output_dir output/olmo2_7b_dpo_top_to_bottom
+    --output_dir output/olmo2_7b_dpo_top_to_bottom_new
