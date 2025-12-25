@@ -33,9 +33,9 @@ accelerate launch \
     --checkpointing_steps 500 \
     --keep_last_n_checkpoints 50 \
     --max_train_samples 1000000 \
-    --exclude_chosen_models internlm/internlm2_5-20b-chat google/gemma-2-27b-it gpt-4o internlm/internlm2_5-7b-chat \
+    --exclude_chosen_models mistralai/Mistral-7B-Instruct-v0.2 mosaicml/mpt-7b-8k-chat allenai/tulu-2-13b mosaicml/mpt-30b-chat \
     --exclude_models_match_rejected \
     --add_seed_and_date_to_exp_name False \
     --do_not_randomize_output_dir True \
     --with_tracking \
-    --output_dir output/olmo2_7b_dpo_ablate_model_bank
+    --output_dir output/olmo2_7b_dpo_ablate_model_combined
