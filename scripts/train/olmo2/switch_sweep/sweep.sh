@@ -2,13 +2,10 @@
 
 # List of ranking_filter_top_n values to sweep over
 # Add or remove numbers as needed
+export NCCL_DEBUG=WARN
+export HF_DATASETS_CACHE=$HOME/.cache/huggingface/datasets
+export HF_HUB_CACHE=$HOME/.cache/huggingface/hub
 TOP_N_VALUES=(
-    1000
-    3000
-    6000
-    12000
-    18000
-    24000
     30000
 )
 
@@ -46,16 +43,16 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --dpo_beta 5 \
         --use_flash_attn \
         --gradient_checkpointing \
-        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao/IFEval/artifacts/attribution/toxicity_streaming_full_sorted.jsonl \
+        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao-two/IFEval/artifacts/attribution/olmo7b_sftbase_distractor_layer20_sft+distractor/rankings_dpo.jsonl \
         --ranking_filter_top_n ${TOP_N} \
         --ranking_filter_action flip \
-        --checkpointing_steps 100 \
+        --checkpointing_steps 500 \
         --keep_last_n_checkpoints 50 \
-        --max_train_samples 80000 \
+        --max_train_samples 1000000 \
         --add_seed_and_date_to_exp_name False \
         --do_not_randomize_output_dir True \
         --with_tracking \
-        --output_dir output/olmo2_7b_dpo_switch_${TOP_N}
+        --output_dir output/olmo2_7b_dpo_switch_${TOP_N}_sft+distractor_mean
     
     echo ""
     echo "Completed training with ranking_filter_top_n=${TOP_N}"
