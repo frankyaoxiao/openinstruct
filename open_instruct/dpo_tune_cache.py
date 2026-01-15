@@ -273,8 +273,7 @@ class FlatArguments:
         },
     )
     ranking_filter_top_n: Optional[int] = field(
-        default=None,
-        metadata={"help": "Number of top-ranked examples to remove using `ranking_filter_jsonl`."},
+        default=None, metadata={"help": "Number of top-ranked examples to remove using `ranking_filter_jsonl`."}
     )
     ranking_filter_action: Literal["remove", "flip"] = field(
         default="remove",
@@ -301,6 +300,16 @@ class FlatArguments:
                 "If set, sort the training dataset according to the ranking JSONL before batching. "
                 "'top_to_bottom' consumes the highest-ranked items first, while 'bottom_to_top' "
                 "starts from the lowest-ranked items. Requires a ranking JSONL."
+            )
+        },
+    )
+    random_filter_n: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": (
+                "Number of examples to randomly remove from the dataset. "
+                "Used as a baseline for comparison with ranking-based filtering. "
+                "Mutually exclusive with --ranking_filter_jsonl."
             )
         },
     )
@@ -719,16 +728,13 @@ def main(args: FlatArguments, tc: TokenizerConfig):
 
         PREF_INDEX_COLUMN = "preference_index"
         train_dataset = train_dataset.map(
-            lambda example, idx: {PREF_INDEX_COLUMN: int(idx)},
-            with_indices=True,
-            desc="Annotating preference indices",
+            lambda example, idx: {PREF_INDEX_COLUMN: int(idx)}, with_indices=True, desc="Annotating preference indices"
         )
 
         if args.sample_before_filtering:
             if args.max_train_samples is None:
                 logger.warning(
-                    "`sample_before_filtering` is True but `max_train_samples` is not set; "
-                    "skipping early sampling."
+                    "`sample_before_filtering` is True but `max_train_samples` is not set; skipping early sampling."
                 )
             else:
                 original_size = len(train_dataset)
@@ -749,23 +755,15 @@ def main(args: FlatArguments, tc: TokenizerConfig):
 
             def _within_length(example):
                 return (
-                    len(example[CHOSEN_INPUT_IDS_KEY]) <= max_len
-                    and len(example[REJECTED_INPUT_IDS_KEY]) <= max_len
+                    len(example[CHOSEN_INPUT_IDS_KEY]) <= max_len and len(example[REJECTED_INPUT_IDS_KEY]) <= max_len
                 )
 
             before_filter = len(train_dataset)
             train_dataset = train_dataset.filter(
-                _within_length,
-                desc=f"Filtering length ≤ {max_len}",
-                num_proc=min(os.cpu_count() or 1, 32),
+                _within_length, desc=f"Filtering length ≤ {max_len}", num_proc=min(os.cpu_count() or 1, 32)
             )
             length_removed = before_filter - len(train_dataset)
-            logger.info(
-                "Filtered out %d of %d examples exceeding length %d.",
-                length_removed,
-                before_filter,
-                max_len,
-            )
+            logger.info("Filtered out %d of %d examples exceeding length %d.", length_removed, before_filter, max_len)
 
         if args.require_rejected_not_shorter:
             missing_cols = [
@@ -773,8 +771,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             ]
             if missing_cols:
                 logger.warning(
-                    "Cannot apply rejected-not-shorter filter; missing columns: %s",
-                    ", ".join(missing_cols),
+                    "Cannot apply rejected-not-shorter filter; missing columns: %s", ", ".join(missing_cols)
                 )
             else:
                 before_filter = len(train_dataset)
@@ -789,10 +786,15 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 )
                 rejected_shorter_removed = before_filter - len(train_dataset)
                 logger.info(
-                    "Rejected-not-shorter filter removed %d of %d examples.",
-                    rejected_shorter_removed,
-                    before_filter,
+                    "Rejected-not-shorter filter removed %d of %d examples.", rejected_shorter_removed, before_filter
                 )
+
+        # Validate mutual exclusion of random and ranking filters
+        if args.random_filter_n and args.ranking_filter_jsonl:
+            raise ValueError(
+                "--random_filter_n and --ranking_filter_jsonl are mutually exclusive. "
+                "Use one or the other for ablation comparison."
+            )
 
         ranking_removed = 0
         ranking_unranked_removed = 0
@@ -817,9 +819,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                         except ValueError:
                             logger.warning("Ranking JSONL entry has non-integer uid: %s", uid)
             except FileNotFoundError as exc:
-                raise FileNotFoundError(
-                    f"Ranking filter file not found: {ranking_path}"
-                ) from exc
+                raise FileNotFoundError(f"Ranking filter file not found: {ranking_path}") from exc
 
             if ranking_uids:
                 pref_values = set(train_dataset[PREF_INDEX_COLUMN])
@@ -831,6 +831,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                     available_set = set(available)
 
                     if args.ranking_filter_action == "flip":
+
                         def _flip_rows(example):
                             if example[PREF_INDEX_COLUMN] in available_set:
                                 example[CHOSEN_INPUT_IDS_KEY], example[REJECTED_INPUT_IDS_KEY] = (
@@ -847,10 +848,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                                 )
                             return example
 
-                        train_dataset = train_dataset.map(
-                            _flip_rows,
-                            num_proc=min(os.cpu_count() or 1, 32),
-                        )
+                        train_dataset = train_dataset.map(_flip_rows, num_proc=min(os.cpu_count() or 1, 32))
                         ranking_removed = 0
                         logger.info(
                             "Ranking filter flipped %d examples (requested=%d, available=%d).",
@@ -859,6 +857,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                             len(available),
                         )
                     else:
+
                         def _keep_ranked(example):
                             return example[PREF_INDEX_COLUMN] not in available_set
 
@@ -881,11 +880,20 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                         len(ranking_uids),
                     )
             else:
-                logger.info(
-                    "Ranking filter skipped: no entries read from %s (top_n=%d).",
-                    ranking_path,
-                    top_n,
-                )
+                logger.info("Ranking filter skipped: no entries read from %s (top_n=%d).", ranking_path, top_n)
+
+        # Random filter: drop N random examples (baseline for ranking filter ablation)
+        random_removed = 0
+        if args.random_filter_n and args.random_filter_n > 0:
+            n_to_remove = min(args.random_filter_n, len(train_dataset))
+            all_indices = list(range(len(train_dataset)))
+            random.seed(args.seed)
+            indices_to_remove = set(random.sample(all_indices, n_to_remove))
+
+            before_filter = len(train_dataset)
+            train_dataset = train_dataset.select([i for i in range(len(train_dataset)) if i not in indices_to_remove])
+            random_removed = before_filter - len(train_dataset)
+            logger.info("Random filter removed %d examples (requested=%d).", random_removed, args.random_filter_n)
 
         chosen_model_removed = 0
         chosen_model_counts: dict[str, int] = {}
@@ -932,9 +940,8 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                         def _keep_blocked_models_any_side(example):
                             cm = example.get(CHOSEN_MODEL_KEY)
                             rm = example.get(REJECTED_MODEL_KEY)
-                            return (
-                                (cm is None or cm not in blocked_models)
-                                and (rm is None or rm not in blocked_models)
+                            return (cm is None or cm not in blocked_models) and (
+                                rm is None or rm not in blocked_models
                             )
 
                         filter_fn = _keep_blocked_models_any_side
@@ -952,11 +959,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                     # Using multiprocessing here has triggered PyArrow segfaults in some environments;
                     # keep it single-threaded since the dataset is already capped.
                     num_proc_models = 1 if args.sample_before_filtering else min(os.cpu_count() or 1, 32)
-                    train_dataset = train_dataset.filter(
-                        filter_fn,
-                        desc=filter_desc,
-                        num_proc=num_proc_models,
-                    )
+                    train_dataset = train_dataset.filter(filter_fn, desc=filter_desc, num_proc=num_proc_models)
                     actual_removed = before_filter - len(train_dataset)
                     if args.exclude_models_match_rejected and rejected_column_present:
                         logger.info(
@@ -975,16 +978,12 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                     if chosen_model_counts:
                         logger.info(
                             "chosen_model removals by model: %s",
-                            ", ".join(
-                                f"{model}: {count}" for model, count in sorted(chosen_model_counts.items())
-                            ),
+                            ", ".join(f"{model}: {count}" for model, count in sorted(chosen_model_counts.items())),
                         )
                     if args.exclude_models_match_rejected and rejected_model_counts:
                         logger.info(
                             "rejected_model (blocklist hits) by model: %s",
-                            ", ".join(
-                                f"{model}: {count}" for model, count in sorted(rejected_model_counts.items())
-                            ),
+                            ", ".join(f"{model}: {count}" for model, count in sorted(rejected_model_counts.items())),
                         )
 
         dataset_source_removed = 0
@@ -1025,9 +1024,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             before_filter = len(train_dataset)
             num_proc_sources = 1 if args.sample_before_filtering else min(os.cpu_count() or 1, 32)
             train_dataset = train_dataset.filter(
-                _keep_dataset,
-                desc="Filtering blocked dataset sources",
-                num_proc=num_proc_sources,
+                _keep_dataset, desc="Filtering blocked dataset sources", num_proc=num_proc_sources
             )
             dataset_source_removed = before_filter - len(train_dataset)
             logger.info(
@@ -1068,9 +1065,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 return uid_int in available_uids
 
             train_dataset = train_dataset.filter(
-                _has_rank,
-                desc="Filtering examples without ranking entries",
-                num_proc=min(os.cpu_count() or 1, 32),
+                _has_rank, desc="Filtering examples without ranking entries", num_proc=min(os.cpu_count() or 1, 32)
             )
             ranking_unranked_removed = before_filter - len(train_dataset)
             logger.info(
@@ -1088,11 +1083,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 fallback_rank = default_offset + max(uid_int, 0)
                 return {ranking_order_column: ranking_map.get(uid_int, fallback_rank)}
 
-            train_dataset = train_dataset.map(
-                _assign_ranking_order,
-                num_proc=1,
-                desc="Annotating ranking order",
-            )
+            train_dataset = train_dataset.map(_assign_ranking_order, num_proc=1, desc="Annotating ranking order")
             reverse_sort = args.ranking_order == "bottom_to_top"
             train_dataset = train_dataset.sort(ranking_order_column, reverse=reverse_sort)
             preview_count = min(5, len(train_dataset))
@@ -1117,20 +1108,18 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             train_dataset = train_dataset.remove_columns(extra_columns)
 
         logger.info(
-            "Filtering summary → length_removed=%d, rejected_shorter_removed=%d, ranking_removed=%d, ranking_unranked_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d",
+            "Filtering summary → length_removed=%d, rejected_shorter_removed=%d, ranking_removed=%d, ranking_unranked_removed=%d, random_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d",
             length_removed,
             rejected_shorter_removed,
             ranking_removed,
             ranking_unranked_removed,
+            random_removed,
             chosen_model_removed,
             dataset_source_removed,
             len(train_dataset),
         )
         if args.exclude_models_match_rejected:
-            logger.info(
-                "Additional filtering summary → rejected_model_removed=%d",
-                rejected_model_removed,
-            )
+            logger.info("Additional filtering summary → rejected_model_removed=%d", rejected_model_removed)
 
         if ranking_removed and ranking_preview:
             logger.info("Top ranking uids removed: %s", ranking_preview)
@@ -1173,12 +1162,13 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             os.makedirs(args.output_dir, exist_ok=True)
             with open(filter_log_path, "a", encoding="utf-8") as f:
                 log_line = (
-                    "length_removed=%d, rejected_shorter_removed=%d, ranking_removed=%d, ranking_unranked_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d"
+                    "length_removed=%d, rejected_shorter_removed=%d, ranking_removed=%d, ranking_unranked_removed=%d, random_removed=%d, chosen_model_removed=%d, dataset_source_removed=%d, remaining=%d"
                     % (
                         length_removed,
                         rejected_shorter_removed,
                         ranking_removed,
                         ranking_unranked_removed,
+                        random_removed,
                         chosen_model_removed,
                         dataset_source_removed,
                         len(train_dataset),
@@ -1187,9 +1177,7 @@ def main(args: FlatArguments, tc: TokenizerConfig):
                 if args.exclude_models_match_rejected:
                     log_line = f"{log_line}, rejected_model_removed={rejected_model_removed}"
                 if chosen_model_counts:
-                    counts_str = ", ".join(
-                        f"{model}:{count}" for model, count in sorted(chosen_model_counts.items())
-                    )
+                    counts_str = ", ".join(f"{model}:{count}" for model, count in sorted(chosen_model_counts.items()))
                     log_line = f"{log_line}, chosen_model_counts={{ {counts_str} }}"
                 if args.exclude_models_match_rejected and rejected_model_counts:
                     r_counts_str = ", ".join(
