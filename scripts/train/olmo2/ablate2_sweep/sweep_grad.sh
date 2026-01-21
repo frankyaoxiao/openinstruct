@@ -2,7 +2,9 @@
 
 export NCCL_DEBUG=WARN
 TOP_N_VALUES=(
-	0
+	3000
+	12000
+	30000
 )
 
 for TOP_N in "${TOP_N_VALUES[@]}"; do
@@ -35,7 +37,7 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --dpo_beta 5 \
         --use_flash_attn \
         --gradient_checkpointing \
-        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao-two/IFEval/artifacts/attribution/olmo7b_bank_base_distractor/rankings_dpo.jsonl \
+        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao-two/LESS/outputs/influence_multi_ckpt/influence_sorted.jsonl \
         --ranking_filter_top_n ${TOP_N} \
         --checkpointing_steps 500 \
         --keep_last_n_checkpoints 50 \
@@ -43,8 +45,10 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --add_seed_and_date_to_exp_name False \
         --do_not_randomize_output_dir True \
         --with_tracking \
+	--push_to_hub False \
+	--try_launch_beaker_eval_jobs False \
         --sample_before_filtering \
-        --output_dir output/olmo2_7b_dpo_${TOP_N}_bank_sftbase+distractor
+        --output_dir output/olmo2_7b_dpo_${TOP_N}_grad_multickpt
     
     echo ""
     echo "Completed training with ranking_filter_top_n=${TOP_N}"

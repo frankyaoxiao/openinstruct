@@ -1616,7 +1616,12 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             output_dir = f"epoch_{epoch}"
             if args.output_dir is not None:
                 output_dir = os.path.join(args.output_dir, output_dir)
-            accelerator.save_state(output_dir)
+            # Save clean model/LoRA weights
+            save_with_accelerate(
+                accelerator, model, tokenizer, output_dir, args.use_lora, chat_template_name=tc.chat_template_name
+            )
+            # Save optimizer and training state
+            accelerator.save_state(os.path.join(output_dir, "training_state"))
             # use this to mark the checkpoint as completely saved, to avoid restoring from garbled checkpoints
             with open(os.path.join(get_last_checkpoint_path(args, incomplete=True), "COMPLETED"), "w") as f:
                 f.write("COMPLETED")  # annoyingly, empty files arent uploaded by beaker.
@@ -1628,6 +1633,8 @@ def main(args: FlatArguments, tc: TokenizerConfig):
         save_with_accelerate(
             accelerator, model, tokenizer, args.output_dir, args.use_lora, chat_template_name=tc.chat_template_name
         )
+        # Also save full training state including optimizer
+        accelerator.save_state(os.path.join(args.output_dir, "training_state"))
 
     # optionally clean checkpoints at end (respect `--keep_last_n_checkpoints`; set to -1 to keep all)
     if accelerator.is_local_main_process:
