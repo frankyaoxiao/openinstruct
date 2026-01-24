@@ -34,14 +34,21 @@ except Exception:
     pass
 
 # Fix for PyTorch 2.6+ weights_only=True default breaking DeepSpeed checkpoint loading
-import torch.serialization
+# Monkey-patch torch.load to use weights_only=False by default
+import torch
+import functools
 
-try:
-    from deepspeed.runtime.zero.config import ZeroStageEnum
+_original_torch_load = torch.load
 
-    torch.serialization.add_safe_globals([ZeroStageEnum])
-except ImportError:
-    pass
+
+@functools.wraps(_original_torch_load)
+def _patched_torch_load(*args, **kwargs):
+    if "weights_only" not in kwargs:
+        kwargs["weights_only"] = False
+    return _original_torch_load(*args, **kwargs)
+
+
+torch.load = _patched_torch_load
 # isort: on
 import json
 import math
