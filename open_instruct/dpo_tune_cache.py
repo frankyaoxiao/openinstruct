@@ -32,6 +32,16 @@ try:
     # https://github.com/deepspeedai/DeepSpeed/issues/7028
 except Exception:
     pass
+
+# Fix for PyTorch 2.6+ weights_only=True default breaking DeepSpeed checkpoint loading
+import torch.serialization
+
+try:
+    from deepspeed.runtime.zero.config import ZeroStageEnum
+
+    torch.serialization.add_safe_globals([ZeroStageEnum])
+except ImportError:
+    pass
 # isort: on
 import json
 import math
