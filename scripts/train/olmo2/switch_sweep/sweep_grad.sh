@@ -1,15 +1,11 @@
 #!/bin/bash
 
-# Random baseline for ablation study - drops N random examples instead of
-# top N ranked examples 
-
 export NCCL_DEBUG=WARN
-RANDOM_N_VALUES=(
-    12000
-    3000
+TOP_N_VALUES=(
+	3000
 )
 
-for RANDOM_N in "${RANDOM_N_VALUES[@]}"; do
+for TOP_N in "${TOP_N_VALUES[@]}"; do
 
     accelerate launch \
         --num_machines 1 \
@@ -18,7 +14,7 @@ for RANDOM_N in "${RANDOM_N_VALUES[@]}"; do
         --use_deepspeed \
         --deepspeed_config_file configs/ds_configs/stage3_no_offloading_accelerate.conf \
         open_instruct/dpo_tune_cache.py \
-        --exp_name olmo2_7b_dpo_random_${RANDOM_N} \
+        --exp_name olmo2_7b_dpo_switch_${TOP_N}_grad \
         --model_name_or_path allenai/OLMo-2-1124-7B-SFT \
         --model_revision main \
         --tokenizer_name allenai/OLMo-2-1124-7B-SFT \
@@ -39,24 +35,25 @@ for RANDOM_N in "${RANDOM_N_VALUES[@]}"; do
         --dpo_beta 5 \
         --use_flash_attn \
         --gradient_checkpointing \
-        --random_filter_n ${RANDOM_N} \
+        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao-two/LESS/outputs/influence_scores/influence_sorted.jsonl \
+        --ranking_filter_top_n ${TOP_N} \
+        --ranking_filter_action flip \
         --checkpointing_steps 500 \
         --keep_last_n_checkpoints 50 \
         --max_train_samples 1000000 \
-	--seed 10 \
         --add_seed_and_date_to_exp_name False \
         --do_not_randomize_output_dir True \
         --push_to_hub False \
         --try_launch_beaker_eval_jobs False \
         --with_tracking \
         --sample_before_filtering \
-        --output_dir output/olmo2_7b_dpo_random_${RANDOM_N}_baseline
+        --output_dir output/olmo2_7b_dpo_switch_${TOP_N}_grad
 
     echo ""
-    echo "Completed training with random_filter_n=${RANDOM_N}"
+    echo "Completed training with ranking_filter_top_n=${TOP_N} (flip)"
     echo ""
 done
 
 echo "=========================================="
-echo "All random baseline training runs completed!"
+echo "All training runs completed!"
 echo "=========================================="

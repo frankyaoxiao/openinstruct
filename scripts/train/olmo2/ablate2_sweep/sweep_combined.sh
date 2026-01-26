@@ -35,7 +35,7 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --dpo_beta 5 \
         --use_flash_attn \
         --gradient_checkpointing \
-        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao-two/LESS/outputs/top_3k_combined_union.jsonl \
+        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao-two/LESS/outputs/top_17600_combined_union.jsonl \
         --ranking_filter_top_n 9999999 \
         --checkpointing_steps 500 \
         --keep_last_n_checkpoints 50 \
@@ -46,7 +46,7 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --try_launch_beaker_eval_jobs False \
         --with_tracking \
         --sample_before_filtering \
-        --output_dir output/olmo2_7b_dpo_combined_3k
+        --output_dir output/olmo2_7b_dpo_combined_30k
     
     echo ""
     echo "Completed training with ranking_filter_top_n=${TOP_N}"

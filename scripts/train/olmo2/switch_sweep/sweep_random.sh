@@ -1,15 +1,21 @@
 #!/bin/bash
 
-# Random baseline for ablation study - drops N random examples instead of
-# top N ranked examples 
+# Random baseline for switch/flip ablation study - flips N random examples
+# instead of flipping top N ranked examples
 
 export NCCL_DEBUG=WARN
+export HF_DATASETS_CACHE=$HOME/.cache/huggingface/datasets
+export HF_HUB_CACHE=$HOME/.cache/huggingface/hub
 RANDOM_N_VALUES=(
-    12000
     3000
+    12000
+    30000
 )
 
 for RANDOM_N in "${RANDOM_N_VALUES[@]}"; do
+    echo "=========================================="
+    echo "Running training with random_filter_n=${RANDOM_N} (flip)"
+    echo "=========================================="
 
     accelerate launch \
         --num_machines 1 \
@@ -18,7 +24,7 @@ for RANDOM_N in "${RANDOM_N_VALUES[@]}"; do
         --use_deepspeed \
         --deepspeed_config_file configs/ds_configs/stage3_no_offloading_accelerate.conf \
         open_instruct/dpo_tune_cache.py \
-        --exp_name olmo2_7b_dpo_random_${RANDOM_N} \
+        --exp_name olmo2_7b_dpo_switch_random_${RANDOM_N} \
         --model_name_or_path allenai/OLMo-2-1124-7B-SFT \
         --model_revision main \
         --tokenizer_name allenai/OLMo-2-1124-7B-SFT \
@@ -40,23 +46,23 @@ for RANDOM_N in "${RANDOM_N_VALUES[@]}"; do
         --use_flash_attn \
         --gradient_checkpointing \
         --random_filter_n ${RANDOM_N} \
+        --random_filter_action flip \
         --checkpointing_steps 500 \
         --keep_last_n_checkpoints 50 \
         --max_train_samples 1000000 \
-	--seed 10 \
         --add_seed_and_date_to_exp_name False \
         --do_not_randomize_output_dir True \
         --push_to_hub False \
         --try_launch_beaker_eval_jobs False \
         --with_tracking \
         --sample_before_filtering \
-        --output_dir output/olmo2_7b_dpo_random_${RANDOM_N}_baseline
+        --output_dir output/olmo2_7b_dpo_switch_random_${RANDOM_N}
 
     echo ""
-    echo "Completed training with random_filter_n=${RANDOM_N}"
+    echo "Completed training with random_filter_n=${RANDOM_N} (flip)"
     echo ""
 done
 
 echo "=========================================="
-echo "All random baseline training runs completed!"
+echo "All random switch training runs completed!"
 echo "=========================================="

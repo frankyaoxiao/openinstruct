@@ -330,6 +330,15 @@ class FlatArguments:
             )
         },
     )
+    random_filter_action: Literal["remove", "flip"] = field(
+        default="remove",
+        metadata={
+            "help": (
+                "What to do with randomly selected examples. "
+                "'remove' drops them (default), 'flip' swaps chosen/rejected fields and keeps them."
+            )
+        },
+    )
     exclude_chosen_models: List[str] = field(
         default_factory=list,
         metadata={
@@ -899,18 +908,46 @@ def main(args: FlatArguments, tc: TokenizerConfig):
             else:
                 logger.info("Ranking filter skipped: no entries read from %s (top_n=%d).", ranking_path, top_n)
 
-        # Random filter: drop N random examples (baseline for ranking filter ablation)
+        # Random filter: drop or flip N random examples (baseline for ranking filter ablation)
         random_removed = 0
         if args.random_filter_n and args.random_filter_n > 0:
-            n_to_remove = min(args.random_filter_n, len(train_dataset))
+            n_to_affect = min(args.random_filter_n, len(train_dataset))
             all_indices = list(range(len(train_dataset)))
             random.seed(args.seed)
-            indices_to_remove = set(random.sample(all_indices, n_to_remove))
+            indices_to_affect = set(random.sample(all_indices, n_to_affect))
 
-            before_filter = len(train_dataset)
-            train_dataset = train_dataset.select([i for i in range(len(train_dataset)) if i not in indices_to_remove])
-            random_removed = before_filter - len(train_dataset)
-            logger.info("Random filter removed %d examples (requested=%d).", random_removed, args.random_filter_n)
+            if args.random_filter_action == "flip":
+
+                def _flip_random_rows(example, idx):
+                    if idx in indices_to_affect:
+                        example[CHOSEN_INPUT_IDS_KEY], example[REJECTED_INPUT_IDS_KEY] = (
+                            example[REJECTED_INPUT_IDS_KEY],
+                            example[CHOSEN_INPUT_IDS_KEY],
+                        )
+                        example[CHOSEN_ATTENTION_MASK_KEY], example[REJECTED_ATTENTION_MASK_KEY] = (
+                            example[REJECTED_ATTENTION_MASK_KEY],
+                            example[CHOSEN_ATTENTION_MASK_KEY],
+                        )
+                        example[CHOSEN_LABELS_KEY], example[REJECTED_LABELS_KEY] = (
+                            example[REJECTED_LABELS_KEY],
+                            example[CHOSEN_LABELS_KEY],
+                        )
+                    return example
+
+                train_dataset = train_dataset.map(
+                    _flip_random_rows, with_indices=True, num_proc=min(os.cpu_count() or 1, 32)
+                )
+                random_removed = 0
+                logger.info(
+                    "Random filter flipped %d examples (requested=%d).", len(indices_to_affect), args.random_filter_n
+                )
+            else:
+                before_filter = len(train_dataset)
+                train_dataset = train_dataset.select(
+                    [i for i in range(len(train_dataset)) if i not in indices_to_affect]
+                )
+                random_removed = before_filter - len(train_dataset)
+                logger.info("Random filter removed %d examples (requested=%d).", random_removed, args.random_filter_n)
 
         chosen_model_removed = 0
         chosen_model_counts: dict[str, int] = {}
