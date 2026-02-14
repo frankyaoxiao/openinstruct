@@ -5,8 +5,7 @@
 
 export NCCL_DEBUG=WARN
 RANDOM_N_VALUES=(
-    12000
-    3000
+    30000
 )
 
 for RANDOM_N in "${RANDOM_N_VALUES[@]}"; do
@@ -27,8 +26,8 @@ for RANDOM_N in "${RANDOM_N_VALUES[@]}"; do
         --add_bos \
         --dataset_mixer_list allenai/olmo-2-1124-7b-preference-mix 1.0 \
         --max_seq_length 2048 \
-        --per_device_train_batch_size 1 \
-        --gradient_accumulation_steps 16 \
+        --per_device_train_batch_size 2 \
+        --gradient_accumulation_steps 8 \
         --learning_rate 1e-6 \
         --lr_scheduler_type linear \
         --warmup_ratio 0.1 \
@@ -38,19 +37,18 @@ for RANDOM_N in "${RANDOM_N_VALUES[@]}"; do
         --dpo_loss_type dpo_norm \
         --dpo_beta 5 \
         --use_flash_attn \
-        --gradient_checkpointing \
         --random_filter_n ${RANDOM_N} \
         --checkpointing_steps 500 \
         --keep_last_n_checkpoints 50 \
         --max_train_samples 1000000 \
-	--seed 10 \
+	--seed 69 \
         --add_seed_and_date_to_exp_name False \
         --do_not_randomize_output_dir True \
         --push_to_hub False \
         --try_launch_beaker_eval_jobs False \
         --with_tracking \
         --sample_before_filtering \
-        --output_dir output/olmo2_7b_dpo_random_${RANDOM_N}_baseline
+        --output_dir output/olmo2_7b_dpo_random_${RANDOM_N}_baseline_69
 
     echo ""
     echo "Completed training with random_filter_n=${RANDOM_N}"

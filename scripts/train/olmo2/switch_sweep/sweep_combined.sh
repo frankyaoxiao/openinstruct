@@ -46,7 +46,6 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --push_to_hub False \
         --try_launch_beaker_eval_jobs False \
         --with_tracking \
-        --sample_before_filtering \
         --output_dir output/olmo2_7b_dpo_switch_combined
 
     echo ""

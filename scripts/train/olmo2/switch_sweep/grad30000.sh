@@ -35,7 +35,7 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --dpo_beta 5 \
         --use_flash_attn \
         --gradient_checkpointing \
-        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao-two/LESS/outputs/influence_scores/influence_sorted.jsonl \
+        --ranking_filter_jsonl /mnt/polished-lake/home/fxiao-two/LESS/outputs/influence_multi_ckpt/influence_sorted.jsonl \
         --ranking_filter_top_n ${TOP_N} \
         --ranking_filter_action flip \
         --checkpointing_steps 500 \
@@ -46,8 +46,7 @@ for TOP_N in "${TOP_N_VALUES[@]}"; do
         --push_to_hub False \
         --try_launch_beaker_eval_jobs False \
         --with_tracking \
-        --sample_before_filtering \
-        --output_dir output/olmo2_7b_dpo_switch_${TOP_N}_grad
+        --output_dir output/olmo2_7b_dpo_switch_${TOP_N}_multigrad
 
     echo ""
     echo "Completed training with ranking_filter_top_n=${TOP_N} (flip)"

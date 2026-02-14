@@ -2,7 +2,7 @@
 
 export NCCL_DEBUG=WARN
 TOP_N_VALUES=(
-	3000
+	12000
 )
 
 for TOP_N in "${TOP_N_VALUES[@]}"; do
